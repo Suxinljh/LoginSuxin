@@ -353,8 +353,8 @@ export function Consent() {
           </div>
           <p className="text-xs leading-relaxed text-muted">授权后，应用只会拿到你的用户 ID、姓名和邮箱，不会拿到密码。</p>
           <div className="grid grid-cols-2 gap-2.5">
-            <Button variant="outline" onPress={() => decide(false)} isDisabled={loading}>拒绝</Button>
-            <Button onPress={() => decide(true)} isPending={loading}>
+            <Button variant="outline" fullWidth onPress={() => decide(false)} isDisabled={loading}>拒绝</Button>
+            <Button fullWidth onPress={() => decide(true)} isPending={loading}>
               {({ isPending }) => (
                 <>
                   {isPending ? <Spinner color="current" size="sm" /> : null}
