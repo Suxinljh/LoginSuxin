@@ -17,5 +17,4 @@ GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 
 # 邮件发送（可选；留空时验证/重置链接会打印到 Worker 控制台）
-RESEND_API_KEY=
-EMAIL_FROM=Suxin Login <login@ljhsu.xin>
+EMAIL_FROM=Suxin Login <login@mail.ljhsu.xin>

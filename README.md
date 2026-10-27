@@ -17,7 +17,7 @@ Suxin 的统一账号与登录服务，部署在 **https://login.ljhsu.xin**。
 | 数据库 | Cloudflare D1（经 Drizzle ORM 访问） |
 | 认证 | Better Auth 1.7 + `@better-auth/oauth-provider` + `admin` / `jwt` 插件 |
 | 前端 | React 19 + React Router 7 + Vite 6 + TypeScript 5 |
-| 邮件 | Resend（未配置时把链接打印到 Worker 日志） |
+| 邮件 | Cloudflare Email Sending（`send_email` 绑定，发件域名 `mail.ljhsu.xin`） |
 
 ## 目录
 
@@ -96,7 +96,6 @@ pnpm db:migrate:remote
 # 3. 只设置真正的密钥（其余非敏感配置在 wrangler.jsonc 的 vars 里）
 pnpm exec wrangler secret put BETTER_AUTH_SECRET      # openssl rand -base64 32
 # 可选：GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET / GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
-# 可选：RESEND_API_KEY
 
 # 4. 构建并部署（wrangler.jsonc 已声明 login.ljhsu.xin 自定义域名）
 pnpm run deploy
@@ -114,7 +113,22 @@ curl -s https://login.ljhsu.xin/api/auth/.well-known/openid-configuration | head
 
 `wrangler.jsonc` 的 `vars` 已包含生产值：`BETTER_AUTH_URL=https://login.ljhsu.xin`、`TRUSTED_ORIGINS=https://login.ljhsu.xin`、`REQUIRE_EMAIL_VERIFICATION=false`、`EMAIL_FROM`。需要额外的浏览器来源时改 `TRUSTED_ORIGINS`。
 
-> `REQUIRE_EMAIL_VERIFICATION` 目前在 `wrangler.jsonc` 里是 `false`。配好 Resend 并验证发信后改成 `"true"` 再部署，否则用户收不到验证邮件会卡在登录前。
+> `REQUIRE_EMAIL_VERIFICATION` 目前在 `wrangler.jsonc` 里是 `false`。确认邮件能正常收到、并把已有账号标记为已验证后，再改成 `"true"` 重新部署，否则未验证用户会被挡在登录之外。
+
+### 邮件发送
+
+验证邮件和找回密码邮件走 Cloudflare Email Sending，不需要第三方 API Key：
+
+```jsonc
+"send_email": [
+  { "name": "EMAIL", "allowed_sender_addresses": ["login@mail.ljhsu.xin"] }
+]
+```
+
+- 发件域名必须先在 **Compute → Email Service → Email Sending** 里启用（当前为 `mail.ljhsu.xin`，`wrangler email sending list` 可查）。
+- 发件地址由 `vars.EMAIL_FROM` 决定，必须属于已启用域名且在上面的 `allowed_sender_addresses` 里。
+- 本地 `wrangler dev` 会模拟发送：不发真实邮件，内容写入控制台和临时文件；线上才是真实投递。
+- 查看额度与投递结果：仪表盘 Email Sending 的 Activity / Metrics。
 
 ### GitHub / Google 登录
 
@@ -133,7 +147,7 @@ curl -s https://login.ljhsu.xin/api/auth/.well-known/openid-configuration | head
 | `REQUIRE_EMAIL_VERIFICATION` | 否 | `true` 时注册后必须验证邮箱 |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | 否 | 留空则不启用 GitHub 登录 |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | 否 | 留空则不启用 Google 登录 |
-| `RESEND_API_KEY` / `EMAIL_FROM` | 否 | 留空时邮件内容打印到 Worker 日志 |
+| `EMAIL_FROM` | 否 | 发件人，默认 `Suxin Login <login@mail.ljhsu.xin>` |
 
 ## 本地数据
 
@@ -151,7 +165,7 @@ curl -s https://login.ljhsu.xin/api/auth/.well-known/openid-configuration | head
 ## 已知限制
 
 - 尚未接入 Turnstile、登录限流、Passkey / 2FA。
-- 邮件依赖 Resend，未配置时验证与找回密码只能在本地日志里取链接。
+- Cloudflare Email Sending 仍是 open beta，日发送额度随账号信誉调整；高频发送前先看仪表盘额度。
 - 目前只有 `login.ljhsu.xin` 一个环境，没有独立的 staging 域名。
 - 各应用自行保存会话，登出应用不会自动踢掉 IdP 登录态（可用 OIDC `end_session_endpoint` 实现）。
 

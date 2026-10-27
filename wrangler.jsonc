@@ -4,13 +4,13 @@
   "main": "./src/worker.ts",
   "compatibility_date": "2026-10-27",
   "compatibility_flags": ["nodejs_compat"],
-  // 非敏感配置。密钥（BETTER_AUTH_SECRET、第三方登录、Resend）用 wrangler secret 管理。
+  // 非敏感配置。密钥（BETTER_AUTH_SECRET、第三方登录）用 wrangler secret 管理。
   "vars": {
     "BETTER_AUTH_URL": "https://login.ljhsu.xin",
     "TRUSTED_ORIGINS": "https://login.ljhsu.xin",
-    // 配好 Resend 之后再改成 "true"，否则用户收不到验证邮件会卡在登录前。
+    // 确认邮件可正常投递后再改成 "true"，否则未验证用户会卡在登录前。
     "REQUIRE_EMAIL_VERIFICATION": "false",
-    "EMAIL_FROM": "Suxin Login <login@ljhsu.xin>"
+    "EMAIL_FROM": "Suxin Login <login@mail.ljhsu.xin>"
   },
   "assets": {
     "directory": "./dist",
@@ -18,6 +18,14 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
+  // Cloudflare Email Sending：发送验证/重置邮件，不需要第三方 API Key。
+  // 发件域名必须已在 Email Sending 中启用；限制发件地址避免被滥用。
+  "send_email": [
+    {
+      "name": "EMAIL",
+      "allowed_sender_addresses": ["login@mail.ljhsu.xin"]
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",

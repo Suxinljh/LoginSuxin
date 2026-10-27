@@ -28,8 +28,10 @@ function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!)
 }
 
-function emailLayout(title: string, description: string, action: string, url: string): string {
-  return `<!doctype html>
+type EmailContent = { html: string; text: string }
+
+function emailLayout(title: string, description: string, action: string, url: string): EmailContent {
+  const html = `<!doctype html>
 <html lang="zh-CN">
   <body style="margin:0;padding:0;background:#f6f4ef;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#1e2420;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:40px 16px;">
@@ -48,26 +50,27 @@ function emailLayout(title: string, description: string, action: string, url: st
     </table>
   </body>
 </html>`
+  // 纯文本版本：部分客户端只显示 text，也有助于降低垃圾邮件评分。
+  const text = `${title}
+
+${description}
+
+${action}：${url}
+
+此邮件由 login.ljhsu.xin 发送。如果不是你本人操作，可以忽略。`
+  return { html, text }
 }
 
-async function sendEmail(env: Env, to: string, subject: string, html: string): Promise<void> {
-  const from = env.EMAIL_FROM || 'Suxin Login <login@ljhsu.xin>'
-  if (!env.RESEND_API_KEY) {
-    // 本地开发没有邮件服务时，把链接打到 Worker 控制台，方便直接点开。
-    console.log(`[email:dev] to=${to}\nsubject=${subject}\n${html}`)
+async function sendEmail(env: Env, to: string, subject: string, content: EmailContent): Promise<void> {
+  // 发件域名必须是在 Cloudflare Email Sending 中已启用的域名（当前为 mail.ljhsu.xin）。
+  const from = env.EMAIL_FROM || 'Suxin Login <login@mail.ljhsu.xin>'
+  if (!env.EMAIL) {
+    // 未绑定 send_email 时的兜底：把内容打到控制台，方便本地排查。
+    console.log(`[email:no-binding] to=${to}\nsubject=${subject}\n${content.text}`)
     return
   }
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.RESEND_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ from, to, subject, html }),
-  })
-  if (!response.ok) {
-    throw new Error(`发送邮件失败：HTTP ${response.status} ${await response.text()}`)
-  }
+  // 本地 wrangler dev 会模拟发送并把内容写入日志/临时文件；线上才会真正投递。
+  await env.EMAIL.send({ from, to, subject, ...content })
 }
 
 export function createAuth(env: Env) {
