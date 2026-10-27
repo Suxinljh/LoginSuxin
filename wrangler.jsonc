@@ -9,7 +9,7 @@
     "BETTER_AUTH_URL": "https://login.ljhsu.xin",
     "TRUSTED_ORIGINS": "https://login.ljhsu.xin",
     // 确认邮件可正常投递后再改成 "true"，否则未验证用户会卡在登录前。
-    "REQUIRE_EMAIL_VERIFICATION": "false",
+    "REQUIRE_EMAIL_VERIFICATION": "true",
     "EMAIL_FROM": "Suxin Login <login@mail.ljhsu.xin>"
   },
   "assets": {

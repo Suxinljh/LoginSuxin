@@ -113,7 +113,7 @@ curl -s https://login.ljhsu.xin/api/auth/.well-known/openid-configuration | head
 
 `wrangler.jsonc` 的 `vars` 已包含生产值：`BETTER_AUTH_URL=https://login.ljhsu.xin`、`TRUSTED_ORIGINS=https://login.ljhsu.xin`、`REQUIRE_EMAIL_VERIFICATION=false`、`EMAIL_FROM`。需要额外的浏览器来源时改 `TRUSTED_ORIGINS`。
 
-> `REQUIRE_EMAIL_VERIFICATION` 目前在 `wrangler.jsonc` 里是 `false`。确认邮件能正常收到、并把已有账号标记为已验证后，再改成 `"true"` 重新部署，否则未验证用户会被挡在登录之外。
+> `REQUIRE_EMAIL_VERIFICATION` 已在生产环境开启（`"true"`）：新注册用户必须点邮件里的链接验证后才能登录。开启前请确认 Email Sending 能正常投递，并把已有账号的 `email_verified` 置为 1，否则老用户会被挡在登录之外。
 
 ### 邮件发送
 
