@@ -134,7 +134,7 @@ curl -s https://login.ljhsu.xin/api/auth/.well-known/openid-configuration | head
 
 ### 自定义邮件模板
 
-模板在 `src/emailTemplate.ts`（纯 HTML + 纯文本，不依赖 Worker），改完用：
+模板在 `src/emailTemplate.ts`（`renderVerificationEmail` / `renderPasswordResetEmail`，600px 白底卡片，纯 HTML + 纯文本，不依赖 Worker），改完用：
 
 ```bash
 pnpm preview:email

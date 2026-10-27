@@ -4,7 +4,7 @@ import { admin, jwt } from 'better-auth/plugins'
 import { oauthProvider } from '@better-auth/oauth-provider'
 import { drizzle } from 'drizzle-orm/d1'
 import * as schema from './db/schema'
-import { renderEmail, type EmailContent } from './emailTemplate'
+import { renderPasswordResetEmail, renderVerificationEmail, type EmailContent } from './emailTemplate'
 import type { Env } from './env'
 
 function trustedOrigins(env: Env): string[] {
@@ -61,7 +61,7 @@ export function createAuth(env: Env) {
           env,
           user.email,
           '重置你的 Suxin 登录密码',
-          renderEmail({ title: '重置登录密码', description: '我们收到了重置密码的请求。点击下面的按钮设置新密码，链接 1 小时内有效。', action: '重置密码', url }),
+          renderPasswordResetEmail({ url }),
         )
       },
     },
@@ -73,7 +73,7 @@ export function createAuth(env: Env) {
           env,
           user.email,
           '验证你的 Suxin 邮箱',
-          renderEmail({ title: '验证邮箱', description: '点击下面的按钮完成邮箱验证，之后就可以用这个账号登录所有应用。', action: '验证邮箱', url }),
+          renderVerificationEmail({ url }),
         )
       },
     },

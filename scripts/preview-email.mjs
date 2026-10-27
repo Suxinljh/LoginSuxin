@@ -8,7 +8,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { renderEmail } from '../src/emailTemplate.ts'
+import { renderPasswordResetEmail, renderVerificationEmail } from '../src/emailTemplate.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = join(root, '.wrangler', 'email-preview')
@@ -16,23 +16,19 @@ const outDir = join(root, '.wrangler', 'email-preview')
 const samples = [
   {
     file: 'verify',
-    title: '验证邮箱',
-    description: '点击下面的按钮完成邮箱验证，之后就可以用这个账号登录所有应用。',
-    action: '验证邮箱',
+    render: renderVerificationEmail,
     url: 'https://login.ljhsu.xin/api/auth/verify-email?token=preview-token',
   },
   {
     file: 'reset-password',
-    title: '重置登录密码',
-    description: '我们收到了重置密码的请求。点击下面的按钮设置新密码，链接 1 小时内有效。',
-    action: '重置密码',
+    render: renderPasswordResetEmail,
     url: 'https://login.ljhsu.xin/api/auth/reset-password/preview-token?callbackURL=https%3A%2F%2Flogin.ljhsu.xin%2Freset-password',
   },
 ]
 
 await mkdir(outDir, { recursive: true })
 for (const sample of samples) {
-  const { html, text } = renderEmail(sample)
+  const { html, text } = sample.render({ url: sample.url })
   await writeFile(join(outDir, `${sample.file}.html`), html, 'utf8')
   await writeFile(join(outDir, `${sample.file}.txt`), text, 'utf8')
 }
