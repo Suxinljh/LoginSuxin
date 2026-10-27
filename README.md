@@ -93,17 +93,16 @@ pnpm exec wrangler d1 create login-suxin
 # 2. 执行远程迁移
 pnpm db:migrate:remote
 
-# 3. 配置 secrets（每个都按提示粘贴）
-pnpm exec wrangler secret put BETTER_AUTH_SECRET
-pnpm exec wrangler secret put BETTER_AUTH_URL          # https://login.ljhsu.xin
-pnpm exec wrangler secret put TRUSTED_ORIGINS          # 见下方说明
-pnpm exec wrangler secret put REQUIRE_EMAIL_VERIFICATION
+# 3. 只设置真正的密钥（其余非敏感配置在 wrangler.jsonc 的 vars 里）
+pnpm exec wrangler secret put BETTER_AUTH_SECRET      # openssl rand -base64 32
 # 可选：GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET / GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
-# 可选：RESEND_API_KEY / EMAIL_FROM
+# 可选：RESEND_API_KEY
 
 # 4. 构建并部署（wrangler.jsonc 已声明 login.ljhsu.xin 自定义域名）
-pnpm deploy
+pnpm run deploy
 ```
+
+> 注意用 `pnpm run deploy`：`pnpm deploy` 是 pnpm 自己的 workspace 命令，会直接报错。
 
 部署后检查：
 
@@ -113,9 +112,9 @@ curl -s https://login.ljhsu.xin/api/auth/ok
 curl -s https://login.ljhsu.xin/api/auth/.well-known/openid-configuration | head -c 400
 ```
 
-生产环境 `TRUSTED_ORIGINS` 至少要包含 `https://login.ljhsu.xin`，以及需要在浏览器里直接调用认证接口的其他来源（通常不需要，各应用走服务端换 token）。
+`wrangler.jsonc` 的 `vars` 已包含生产值：`BETTER_AUTH_URL=https://login.ljhsu.xin`、`TRUSTED_ORIGINS=https://login.ljhsu.xin`、`REQUIRE_EMAIL_VERIFICATION=false`、`EMAIL_FROM`。需要额外的浏览器来源时改 `TRUSTED_ORIGINS`。
 
-> `REQUIRE_EMAIL_VERIFICATION=true` 前请先配置 Resend，否则验证链接只会打印在 Worker 日志里，用户无法完成验证。
+> `REQUIRE_EMAIL_VERIFICATION` 目前在 `wrangler.jsonc` 里是 `false`。配好 Resend 并验证发信后改成 `"true"` 再部署，否则用户收不到验证邮件会卡在登录前。
 
 ### GitHub / Google 登录
 

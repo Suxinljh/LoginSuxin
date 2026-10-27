@@ -4,6 +4,14 @@
   "main": "./src/worker.ts",
   "compatibility_date": "2026-10-27",
   "compatibility_flags": ["nodejs_compat"],
+  // 非敏感配置。密钥（BETTER_AUTH_SECRET、第三方登录、Resend）用 wrangler secret 管理。
+  "vars": {
+    "BETTER_AUTH_URL": "https://login.ljhsu.xin",
+    "TRUSTED_ORIGINS": "https://login.ljhsu.xin",
+    // 配好 Resend 之后再改成 "true"，否则用户收不到验证邮件会卡在登录前。
+    "REQUIRE_EMAIL_VERIFICATION": "false",
+    "EMAIL_FROM": "Suxin Login <login@ljhsu.xin>"
+  },
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
@@ -14,7 +22,7 @@
     {
       "binding": "DB",
       "database_name": "login-suxin",
-      "database_id": "00000000-0000-0000-0000-000000000000"
+      "database_id": "7cb2e435-f4f1-43d7-b0f0-fd1820ee575e"
     }
   ],
   "routes": [
