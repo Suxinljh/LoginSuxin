@@ -13,7 +13,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply login-suxin --local",
     "db:migrate:remote": "wrangler d1 migrations apply login-suxin --remote",
-    "create-client": "node scripts/create-client.mjs"
+    "create-client": "node scripts/create-client.mjs",
+    "preview:email": "node scripts/preview-email.mjs"
   },
   "dependencies": {
     "@better-auth/oauth-provider": "^1.7.14",

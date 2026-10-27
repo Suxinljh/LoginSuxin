@@ -130,6 +130,17 @@ curl -s https://login.ljhsu.xin/api/auth/.well-known/openid-configuration | head
 - 本地 `wrangler dev` 会模拟发送：不发真实邮件，内容写入控制台和临时文件；线上才是真实投递。
 - 查看额度与投递结果：仪表盘 Email Sending 的 Activity / Metrics。
 
+### 自定义邮件模板
+
+模板在 `src/emailTemplate.ts`（纯 HTML + 纯文本，不依赖 Worker），改完用：
+
+```bash
+pnpm preview:email
+# 生成 .wrangler/email-preview/verify.html 与 reset-password.html
+```
+
+在浏览器里打开预览文件即可，不需要发真实邮件。改完 `pnpm run deploy` 生效；标题和正文文案在 `src/auth.ts` 的 `sendResetPassword` / `sendVerificationEmail` 调用处。发件人由 `vars.EMAIL_FROM` 决定，且必须出现在 `send_email` 的 `allowed_sender_addresses` 里。
+
 ### GitHub / Google 登录
 
 - GitHub OAuth App 回调地址：`https://login.ljhsu.xin/api/auth/callback/github`
@@ -161,6 +172,7 @@ curl -s https://login.ljhsu.xin/api/auth/.well-known/openid-configuration | head
 - OIDC 强制 Authorization Code + PKCE（S256），客户端密钥只用于服务端换 token。
 - OAuth 客户端只能由管理员创建，普通用户没有 `clientPrivileges`。
 - 用户信息只返回 `sub`、`name`、`email`、`email_verified` 等基础字段，不含密码与业务数据。
+- 登出确认页由本服务自定义（`src/logoutPage.ts`），并在 Worker 层拦截 `end-session` 的 HTML 输出；确认状态 Cookie 与官方 `confirm` 端点保持不变，应用无需改动。
 
 ## 已知限制
 

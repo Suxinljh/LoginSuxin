@@ -4,6 +4,7 @@ import { admin, jwt } from 'better-auth/plugins'
 import { oauthProvider } from '@better-auth/oauth-provider'
 import { drizzle } from 'drizzle-orm/d1'
 import * as schema from './db/schema'
+import { renderEmail, type EmailContent } from './emailTemplate'
 import type { Env } from './env'
 
 function trustedOrigins(env: Env): string[] {
@@ -22,43 +23,6 @@ function socialProviders(env: Env) {
       ? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } }
       : {}),
   }
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!)
-}
-
-type EmailContent = { html: string; text: string }
-
-function emailLayout(title: string, description: string, action: string, url: string): EmailContent {
-  const html = `<!doctype html>
-<html lang="zh-CN">
-  <body style="margin:0;padding:0;background:#f6f4ef;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#1e2420;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:40px 16px;">
-      <tr><td align="center">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border:1px solid #e4e0d6;border-radius:18px;padding:36px;">
-          <tr><td>
-            <div style="font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#6b736c;margin-bottom:18px;">Suxin Account</div>
-            <h1 style="margin:0 0 12px;font-size:26px;line-height:1.3;">${escapeHtml(title)}</h1>
-            <p style="margin:0 0 26px;font-size:15px;line-height:1.75;color:#4c554e;">${escapeHtml(description)}</p>
-            <a href="${escapeHtml(url)}" style="display:inline-block;background:#1f6f5c;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:13px 24px;border-radius:10px;">${escapeHtml(action)}</a>
-            <p style="margin:26px 0 0;font-size:13px;line-height:1.7;color:#7b837c;">如果按钮无法打开，请复制以下链接到浏览器：<br><span style="word-break:break-all;color:#1f6f5c;">${escapeHtml(url)}</span></p>
-          </td></tr>
-        </table>
-        <p style="max-width:520px;margin:18px auto 0;font-size:12px;line-height:1.7;color:#8b938c;text-align:center;">此邮件由 login.ljhsu.xin 发送。如果不是你本人操作，可以忽略。</p>
-      </td></tr>
-    </table>
-  </body>
-</html>`
-  // 纯文本版本：部分客户端只显示 text，也有助于降低垃圾邮件评分。
-  const text = `${title}
-
-${description}
-
-${action}：${url}
-
-此邮件由 login.ljhsu.xin 发送。如果不是你本人操作，可以忽略。`
-  return { html, text }
 }
 
 async function sendEmail(env: Env, to: string, subject: string, content: EmailContent): Promise<void> {
@@ -97,7 +61,7 @@ export function createAuth(env: Env) {
           env,
           user.email,
           '重置你的 Suxin 登录密码',
-          emailLayout('重置登录密码', '我们收到了重置密码的请求。点击下面的按钮设置新密码，链接 1 小时内有效。', '重置密码', url),
+          renderEmail({ title: '重置登录密码', description: '我们收到了重置密码的请求。点击下面的按钮设置新密码，链接 1 小时内有效。', action: '重置密码', url }),
         )
       },
     },
@@ -109,7 +73,7 @@ export function createAuth(env: Env) {
           env,
           user.email,
           '验证你的 Suxin 邮箱',
-          emailLayout('验证邮箱', '点击下面的按钮完成邮箱验证，之后就可以用这个账号登录所有应用。', '验证邮箱', url),
+          renderEmail({ title: '验证邮箱', description: '点击下面的按钮完成邮箱验证，之后就可以用这个账号登录所有应用。', action: '验证邮箱', url }),
         )
       },
     },

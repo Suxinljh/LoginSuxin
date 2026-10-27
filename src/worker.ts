@@ -1,5 +1,6 @@
 import { verifyOAuthQueryParams } from '@better-auth/oauth-provider'
 import { createAuth } from './auth'
+import { parseUriList, renderLogoutPage, safeCancelUrl } from './logoutPage'
 import type { Env } from './env'
 
 function json(value: unknown, status = 200): Response {
@@ -8,11 +9,11 @@ function json(value: unknown, status = 200): Response {
 
 function errorMessage(error: unknown): { status: number; message: string } {
   if (typeof error === 'object' && error !== null) {
-    const status = (error as { status?: unknown }).status
-    const body = (error as { body?: { message?: unknown } }).body
-    if (typeof status === 'number' && typeof body?.message === 'string') {
-      return { status, message: body.message }
-    }
+    const statusCode = (error as { statusCode?: unknown }).statusCode
+    const status = typeof statusCode === 'number' ? statusCode : 500
+    const body = (error as { body?: { message?: unknown; error_description?: unknown } }).body
+    if (typeof body?.message === 'string' && body.message) return { status, message: body.message }
+    if (typeof body?.error_description === 'string' && body.error_description) return { status, message: body.error_description }
   }
   return { status: 500, message: error instanceof Error ? error.message : '请求失败，请稍后重试。' }
 }
@@ -59,9 +60,49 @@ async function handleAdminCreateClient(request: Request, env: Env): Promise<Resp
     })
     return json(data, 201)
   } catch (error) {
+    console.error('[admin] 创建 OAuth 客户端失败', error)
     const { status, message } = errorMessage(error)
-    return json({ error: message }, status)
+    return json({ error: message || '创建 OAuth 客户端失败。' }, status)
   }
+}
+
+/**
+ * 登出确认页自带英文纯文本样式。这里保留 Set-Cookie（确认状态），
+ * 只把 HTML 换成与登录页一致的品牌页面；提交仍走官方 confirm 端点。
+ */
+async function handleEndSession(request: Request, env: Env): Promise<Response> {
+  const auth = createAuth(env)
+  const response = await auth.handler(request)
+  if (request.method !== 'GET' || response.status !== 200) return response
+  if (!(response.headers.get('content-type') || '').includes('text/html')) return response
+
+  const html = await response.text()
+  if (!html.includes('data-oidc-logout-confirmation')) {
+    // 成功页或错误页保持原样；正文已读取，需要重新包装响应。
+    return new Response(html, { status: response.status, headers: new Headers(response.headers) })
+  }
+
+  const url = new URL(request.url)
+  const clientId = url.searchParams.get('client_id') || ''
+  let appName = '应用'
+  let cancelUrl = '/account'
+  if (clientId) {
+    try {
+      const client = await env.DB.prepare('select name, post_logout_redirect_uris from oauth_client where client_id = ?')
+        .bind(clientId)
+        .first<{ name: string | null; post_logout_redirect_uris: string | null }>()
+      if (client?.name) appName = client.name
+      cancelUrl = safeCancelUrl(parseUriList(client?.post_logout_redirect_uris ?? null), url.searchParams.get('post_logout_redirect_uri'))
+    } catch {
+      // 查询失败时退回默认文案，不影响退出。
+    }
+  }
+
+  const headers = new Headers(response.headers)
+  headers.set('content-type', 'text/html; charset=utf-8')
+  headers.set('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+  headers.delete('content-length')
+  return new Response(renderLogoutPage({ appName, cancelUrl }), { status: 200, headers })
 }
 
 export default {
@@ -87,6 +128,10 @@ export default {
     if (url.pathname === '/api/admin/oauth-clients') {
       if (request.method !== 'POST') return new Response('Method not allowed', { status: 405 })
       return handleAdminCreateClient(request, env)
+    }
+
+    if (url.pathname === '/api/auth/oauth2/end-session') {
+      return handleEndSession(request, env)
     }
 
     if (url.pathname.startsWith('/api/auth/')) {
