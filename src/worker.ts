@@ -100,7 +100,7 @@ async function handleEndSession(request: Request, env: Env): Promise<Response> {
 
   const headers = new Headers(response.headers)
   headers.set('content-type', 'text/html; charset=utf-8')
-  headers.set('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+  headers.set('content-security-policy', "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
   headers.delete('content-length')
   return new Response(renderLogoutPage({ appName, cancelUrl }), { status: 200, headers })
 }

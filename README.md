@@ -16,7 +16,7 @@ Suxin 的统一账号与登录服务，部署在 **https://login.ljhsu.xin**。
 | 运行时 | Cloudflare Workers（`nodejs_compat`） |
 | 数据库 | Cloudflare D1（经 Drizzle ORM 访问） |
 | 认证 | Better Auth 1.7 + `@better-auth/oauth-provider` + `admin` / `jwt` 插件 |
-| 前端 | React 19 + React Router 7 + Vite 6 + TypeScript 5 |
+| 前端 | React 19 + React Router 7 + Vite 6 + TypeScript 5 + Tailwind CSS 4 + HeroUI v3 |
 | 邮件 | Cloudflare Email Sending（`send_email` 绑定，发件域名 `mail.ljhsu.xin`） |
 
 ## 目录
@@ -27,7 +27,9 @@ Suxin 的统一账号与登录服务，部署在 **https://login.ljhsu.xin**。
 | `src/auth.cli.ts` | 仅供 Better Auth CLI 生成数据库 schema 使用，不参与运行时 |
 | `src/worker.ts` | Worker 入口：`/api/auth/*`、`/api/consent-info`、`/api/providers`、`/api/admin/oauth-clients`、静态资源 |
 | `src/db/schema.ts` | 由 Better Auth CLI 生成的 Drizzle schema（物理表名 snake_case） |
-| `src/client/*` | 登录、注册、找回密码、账户、授权确认、更新日志页面 |
+| `src/client/*` | 登录、注册、找回密码、账户、授权确认、更新日志页面（HeroUI 组件） |
+| `src/client/theme.css` | HeroUI 品牌主题变量（颜色、圆角、字体） |
+| `public/brand/*` | 亮色/暗色 logo 与站点图标 |
 | `scripts/create-client.mjs` | 以管理员身份创建 OAuth 客户端并输出 `client_id` / `client_secret` |
 | `migrations/` | D1 SQL 迁移 |
 | `docs/client-integration.md` | 给各应用看的 OIDC 接入说明 |

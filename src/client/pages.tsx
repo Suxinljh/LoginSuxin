@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { Button, Chip, Spinner } from '@heroui/react'
 import { authClient } from './auth-client'
-import { Alert, AuthShell, Button, SocialButtons, Spinner, TextField, errorText } from './components'
+import { AuthShell, FormField, Notice, SocialButtons, StatusChip, SubmitButton, TextLink, errorText } from './components'
 
 function useOAuthFlow(): boolean {
   return useMemo(() => {
@@ -15,7 +16,9 @@ export function Home() {
   if (isPending) {
     return (
       <AuthShell title="Suxin 登录">
-        <div className="loading-box"><Spinner /> 正在读取登录状态…</div>
+        <div className="flex items-center justify-center gap-2.5 py-6 text-sm text-muted">
+          <Spinner size="sm" /> 正在读取登录状态…
+        </div>
       </AuthShell>
     )
   }
@@ -46,35 +49,18 @@ export function SignIn() {
 
   return (
     <AuthShell title="登录 Suxin" description="一个账号，登录所有应用。">
-      <form className="auth-form" onSubmit={submit}>
-        {error && <Alert kind="error">{error}</Alert>}
-        <TextField
-          label="邮箱"
-          type="email"
-          autoComplete="email"
-          required
-          value={email}
-          onChange={event => setEmail(event.target.value)}
-          placeholder="you@example.com"
-        />
-        <TextField
-          label="密码"
-          type="password"
-          autoComplete="current-password"
-          required
-          value={password}
-          onChange={event => setPassword(event.target.value)}
-          placeholder="至少 8 位"
-        />
-        <div className="form-between">
-          <span />
-          <Link to="/forgot-password">忘记密码？</Link>
+      <form className="grid gap-4" onSubmit={submit}>
+        {error && <Notice kind="danger">{error}</Notice>}
+        <FormField label="邮箱" type="email" autoComplete="email" value={email} onChange={setEmail} placeholder="you@example.com" />
+        <FormField label="密码" type="password" autoComplete="current-password" value={password} onChange={setPassword} placeholder="至少 8 位" />
+        <div className="-mt-1 flex justify-end text-sm">
+          <TextLink href="/forgot-password">忘记密码？</TextLink>
         </div>
-        <Button type="submit" loading={loading}>登录</Button>
+        <SubmitButton loading={loading}>登录</SubmitButton>
       </form>
       <SocialButtons onError={setError} />
-      <p className="auth-switch">
-        还没有账号？<Link to="/sign-up">创建一个</Link>
+      <p className="mt-5 text-center text-sm text-muted">
+        还没有账号？<TextLink href="/sign-up">创建一个</TextLink>
       </p>
     </AuthShell>
   )
@@ -115,59 +101,25 @@ export function SignUp() {
   if (done) {
     return (
       <AuthShell title="注册成功" description="如果开启了邮箱验证，请先查收验证邮件。">
-        <Alert kind="success">账号已创建。验证邮箱后即可登录所有应用。</Alert>
-        <p className="auth-switch"><Link to="/sign-in">返回登录</Link></p>
+        <Notice kind="success">账号已创建。验证邮箱后即可登录所有应用。</Notice>
+        <p className="mt-5 text-center text-sm text-muted"><TextLink href="/sign-in">返回登录</TextLink></p>
       </AuthShell>
     )
   }
 
   return (
     <AuthShell title="创建 Suxin 账号" description="注册一次，之后用它登录所有应用。">
-      <form className="auth-form" onSubmit={submit}>
-        {error && <Alert kind="error">{error}</Alert>}
-        <TextField
-          label="名字"
-          type="text"
-          autoComplete="name"
-          required
-          value={name}
-          onChange={event => setName(event.target.value)}
-          placeholder="怎么称呼你"
-        />
-        <TextField
-          label="邮箱"
-          type="email"
-          autoComplete="email"
-          required
-          value={email}
-          onChange={event => setEmail(event.target.value)}
-          placeholder="you@example.com"
-        />
-        <TextField
-          label="密码"
-          type="password"
-          autoComplete="new-password"
-          required
-          minLength={8}
-          value={password}
-          onChange={event => setPassword(event.target.value)}
-          placeholder="至少 8 位"
-        />
-        <TextField
-          label="确认密码"
-          type="password"
-          autoComplete="new-password"
-          required
-          minLength={8}
-          value={confirm}
-          onChange={event => setConfirm(event.target.value)}
-          placeholder="再输入一次"
-        />
-        <Button type="submit" loading={loading}>创建账号</Button>
+      <form className="grid gap-4" onSubmit={submit}>
+        {error && <Notice kind="danger">{error}</Notice>}
+        <FormField label="名字" autoComplete="name" value={name} onChange={setName} placeholder="怎么称呼你" />
+        <FormField label="邮箱" type="email" autoComplete="email" value={email} onChange={setEmail} placeholder="you@example.com" />
+        <FormField label="密码" type="password" autoComplete="new-password" minLength={8} value={password} onChange={setPassword} placeholder="至少 8 位" />
+        <FormField label="确认密码" type="password" autoComplete="new-password" minLength={8} value={confirm} onChange={setConfirm} placeholder="再输入一次" />
+        <SubmitButton loading={loading}>创建账号</SubmitButton>
       </form>
       <SocialButtons onError={setError} />
-      <p className="auth-switch">
-        已经有账号？<Link to="/sign-in">直接登录</Link>
+      <p className="mt-5 text-center text-sm text-muted">
+        已经有账号？<TextLink href="/sign-in">直接登录</TextLink>
       </p>
     </AuthShell>
   )
@@ -198,28 +150,20 @@ export function ForgotPassword() {
   if (sent) {
     return (
       <AuthShell title="邮件已发送" description="如果这个邮箱已注册，你会收到一封重置密码的邮件。">
-        <Alert kind="success">请查收邮件，并点击其中的链接设置新密码。链接 1 小时内有效。</Alert>
-        <p className="auth-switch"><Link to="/sign-in">返回登录</Link></p>
+        <Notice kind="success">请查收邮件，并点击其中的链接设置新密码。链接 1 小时内有效。</Notice>
+        <p className="mt-5 text-center text-sm text-muted"><TextLink href="/sign-in">返回登录</TextLink></p>
       </AuthShell>
     )
   }
 
   return (
     <AuthShell title="找回密码" description="输入注册邮箱，我们会发送重置链接。">
-      <form className="auth-form" onSubmit={submit}>
-        {error && <Alert kind="error">{error}</Alert>}
-        <TextField
-          label="邮箱"
-          type="email"
-          autoComplete="email"
-          required
-          value={email}
-          onChange={event => setEmail(event.target.value)}
-          placeholder="you@example.com"
-        />
-        <Button type="submit" loading={loading}>发送重置邮件</Button>
+      <form className="grid gap-4" onSubmit={submit}>
+        {error && <Notice kind="danger">{error}</Notice>}
+        <FormField label="邮箱" type="email" autoComplete="email" value={email} onChange={setEmail} placeholder="you@example.com" />
+        <SubmitButton loading={loading}>发送重置邮件</SubmitButton>
       </form>
-      <p className="auth-switch"><Link to="/sign-in">返回登录</Link></p>
+      <p className="mt-5 text-center text-sm text-muted"><TextLink href="/sign-in">返回登录</TextLink></p>
     </AuthShell>
   )
 }
@@ -253,8 +197,8 @@ export function ResetPassword() {
   if (!token) {
     return (
       <AuthShell title="链接无效" description="重置链接缺少必要参数。">
-        <Alert kind="error">请重新申请一封重置密码邮件。</Alert>
-        <p className="auth-switch"><Link to="/forgot-password">重新申请</Link></p>
+        <Notice kind="danger">请重新申请一封重置密码邮件。</Notice>
+        <p className="mt-5 text-center text-sm text-muted"><TextLink href="/forgot-password">重新申请</TextLink></p>
       </AuthShell>
     )
   }
@@ -262,39 +206,30 @@ export function ResetPassword() {
   if (done) {
     return (
       <AuthShell title="密码已更新" description="现在可以用新密码登录了。">
-        <Alert kind="success">密码修改成功。</Alert>
-        <p className="auth-switch"><Link to="/sign-in">去登录</Link></p>
+        <Notice kind="success">密码修改成功。</Notice>
+        <p className="mt-5 text-center text-sm text-muted"><TextLink href="/sign-in">去登录</TextLink></p>
       </AuthShell>
     )
   }
 
   return (
     <AuthShell title="设置新密码" description="请输入一个至少 8 位的新密码。">
-      <form className="auth-form" onSubmit={submit}>
-        {error && <Alert kind="error">{error}</Alert>}
-        <TextField
-          label="新密码"
-          type="password"
-          autoComplete="new-password"
-          required
-          minLength={8}
-          value={password}
-          onChange={event => setPassword(event.target.value)}
-          placeholder="至少 8 位"
-        />
-        <TextField
-          label="确认新密码"
-          type="password"
-          autoComplete="new-password"
-          required
-          minLength={8}
-          value={confirm}
-          onChange={event => setConfirm(event.target.value)}
-          placeholder="再输入一次"
-        />
-        <Button type="submit" loading={loading}>更新密码</Button>
+      <form className="grid gap-4" onSubmit={submit}>
+        {error && <Notice kind="danger">{error}</Notice>}
+        <FormField label="新密码" type="password" autoComplete="new-password" minLength={8} value={password} onChange={setPassword} placeholder="至少 8 位" />
+        <FormField label="确认新密码" type="password" autoComplete="new-password" minLength={8} value={confirm} onChange={setConfirm} placeholder="再输入一次" />
+        <SubmitButton loading={loading}>更新密码</SubmitButton>
       </form>
     </AuthShell>
+  )
+}
+
+function InfoRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-6 border-b border-separator px-4 py-3 text-sm last:border-b-0">
+      <span className="shrink-0 text-muted">{label}</span>
+      <span className="text-right font-medium break-all">{children}</span>
+    </div>
   )
 }
 
@@ -308,7 +243,9 @@ export function Account() {
   if (isPending) {
     return (
       <AuthShell title="正在读取登录状态">
-        <div className="loading-box"><Spinner /> 请稍候…</div>
+        <div className="flex items-center justify-center gap-2.5 py-6 text-sm text-muted">
+          <Spinner size="sm" /> 请稍候…
+        </div>
       </AuthShell>
     )
   }
@@ -338,22 +275,27 @@ export function Account() {
 
   return (
     <AuthShell title={`你好，${user.name || '朋友'}`} description="你已登录 Suxin 统一账号。">
-      {notice && <Alert kind="success">{notice}</Alert>}
-      {error && <Alert kind="error">{error}</Alert>}
-      <div className="account-card">
-        <div className="account-row"><span>邮箱</span><strong>{user.email}</strong></div>
-        <div className="account-row"><span>状态</span><strong>{user.emailVerified ? '邮箱已验证' : '邮箱未验证'}</strong></div>
-        <div className="account-row"><span>用户 ID</span><code>{user.id}</code></div>
-      </div>
-      {!user.emailVerified && (
-        <div className="account-actions">
-          <Button variant="secondary" loading={sending} onClick={resendVerification}>重新发送验证邮件</Button>
+      <div className="grid gap-4">
+        {notice && <Notice kind="success">{notice}</Notice>}
+        {error && <Notice kind="danger">{error}</Notice>}
+        <div className="overflow-hidden rounded-xl border border-border bg-surface-secondary">
+          <InfoRow label="邮箱">{user.email}</InfoRow>
+          <InfoRow label="状态"><StatusChip verified={user.emailVerified} /></InfoRow>
+          <InfoRow label="用户 ID"><code className="font-mono text-xs font-normal text-muted">{user.id}</code></InfoRow>
         </div>
-      )}
-      <div className="account-actions">
-        <Button variant="secondary" onClick={signOut}>退出登录</Button>
+        {!user.emailVerified && (
+          <Button variant="secondary" fullWidth onPress={resendVerification} isPending={sending}>
+            {({ isPending }) => (
+              <>
+                {isPending ? <Spinner color="current" size="sm" /> : null}
+                重新发送验证邮件
+              </>
+            )}
+          </Button>
+        )}
+        <Button variant="outline" fullWidth onPress={signOut}>退出登录</Button>
+        <p className="text-center text-sm text-muted"><TextLink href="/">返回首页</TextLink></p>
       </div>
-      <p className="auth-switch"><Link to="/">返回首页</Link></p>
     </AuthShell>
   )
 }
@@ -396,35 +338,51 @@ export function Consent() {
 
   return (
     <AuthShell title="授权登录" description="一个应用正在请求访问你的 Suxin 账号。">
-      {error && <Alert kind="error">{error}</Alert>}
+      {error && <Notice kind="danger">{error}</Notice>}
       {info ? (
-        <>
-          <div className="account-card">
-            <div className="account-row"><span>应用</span><strong>{info.client_id || '未知应用'}</strong></div>
-            <div className="account-row"><span>请求范围</span><strong>{scopes.length ? scopes.join('、') : '基础账号信息'}</strong></div>
+        <div className="grid gap-4">
+          <div className="overflow-hidden rounded-xl border border-border bg-surface-secondary">
+            <InfoRow label="应用">{info.client_id || '未知应用'}</InfoRow>
+            <InfoRow label="请求范围">
+              {scopes.length ? (
+                <span className="flex flex-wrap justify-end gap-1.5">
+                  {scopes.map(scope => <Chip key={scope} size="sm" color="accent">{scope}</Chip>)}
+                </span>
+              ) : '基础账号信息'}
+            </InfoRow>
           </div>
-          <p className="consent-note">授权后，应用只会拿到你的用户 ID、姓名和邮箱，不会拿到密码。</p>
-          <div className="consent-actions">
-            <Button variant="secondary" onClick={() => decide(false)} disabled={loading}>拒绝</Button>
-            <Button onClick={() => decide(true)} loading={loading}>允许</Button>
+          <p className="text-xs leading-relaxed text-muted">授权后，应用只会拿到你的用户 ID、姓名和邮箱，不会拿到密码。</p>
+          <div className="grid grid-cols-2 gap-2.5">
+            <Button variant="outline" onPress={() => decide(false)} isDisabled={loading}>拒绝</Button>
+            <Button onPress={() => decide(true)} isPending={loading}>
+              {({ isPending }) => (
+                <>
+                  {isPending ? <Spinner color="current" size="sm" /> : null}
+                  允许
+                </>
+              )}
+            </Button>
           </div>
-        </>
+        </div>
       ) : !error ? (
-        <div className="loading-box"><Spinner /> 正在验证授权请求…</div>
+        <div className="flex items-center justify-center gap-2.5 py-6 text-sm text-muted">
+          <Spinner size="sm" /> 正在验证授权请求…
+        </div>
       ) : null}
     </AuthShell>
   )
 }
 
-export function NotFound() {
-  return (
-    <AuthShell title="页面不存在" description="你访问的地址可能已经失效。">
-      <p className="auth-switch"><Link to="/">回到首页</Link></p>
-    </AuthShell>
-  )
-}
-
 const CHANGELOG = [
+  {
+    version: 'v0.1.1',
+    date: '2026-10-27',
+    items: [
+      '登录、注册、找回密码、账户与授权页改用 HeroUI v3 组件与 Tailwind CSS 4。',
+      '新增自定义品牌主题（src/client/theme.css），跟随系统自动切换亮色/暗色。',
+      '表单校验、加载状态与提示改用组件化的 Alert / Spinner / Button。',
+    ],
+  },
   {
     version: 'v0.1.0',
     date: '2026-10-27',
@@ -441,20 +399,28 @@ const CHANGELOG = [
 export function Changelog() {
   return (
     <AuthShell title="更新日志" description="Suxin 统一账号的版本记录。">
-      <div className="changelog">
+      <div className="grid gap-4">
         {CHANGELOG.map(entry => (
-          <section key={entry.version} className="changelog-entry">
-            <header>
-              <strong>{entry.version}</strong>
-              <span>{entry.date}</span>
+          <section key={entry.version} className="rounded-xl border border-border bg-surface-secondary p-4">
+            <header className="mb-2.5 flex items-baseline justify-between gap-3">
+              <strong className="text-sm">{entry.version}</strong>
+              <span className="text-xs text-muted">{entry.date}</span>
             </header>
-            <ul>
+            <ul className="grid list-disc gap-1.5 pl-4 text-[13px] leading-relaxed text-muted">
               {entry.items.map(item => <li key={item}>{item}</li>)}
             </ul>
           </section>
         ))}
       </div>
-      <p className="auth-switch"><Link to="/">返回首页</Link></p>
+      <p className="mt-5 text-center text-sm text-muted"><TextLink href="/">返回首页</TextLink></p>
+    </AuthShell>
+  )
+}
+
+export function NotFound() {
+  return (
+    <AuthShell title="页面不存在" description="你访问的地址可能已经失效。">
+      <p className="text-center text-sm text-muted"><TextLink href="/">回到首页</TextLink></p>
     </AuthShell>
   )
 }

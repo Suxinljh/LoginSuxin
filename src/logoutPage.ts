@@ -71,13 +71,7 @@ export function renderLogoutPage({ appName, cancelUrl }: LogoutPageInput): strin
         padding: 32px;
       }
       .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
-      .mark {
-        width: 36px; height: 36px; border-radius: 11px;
-        display: grid; place-items: center;
-        background: linear-gradient(145deg, var(--accent), var(--accent-strong));
-        color: #fff; font-size: 19px; font-weight: 800;
-      }
-      .brand span { font-size: 16px; font-weight: 700; }
+      .brand img { display: block; height: 30px; width: auto; }
       h1 { margin: 0 0 10px; font-size: 26px; line-height: 1.25; letter-spacing: -0.02em; }
       p { margin: 0 0 24px; font-size: 14px; line-height: 1.7; color: var(--muted); }
       .app { color: var(--ink); font-weight: 600; }
@@ -100,7 +94,12 @@ export function renderLogoutPage({ appName, cancelUrl }: LogoutPageInput): strin
   </head>
   <body>
     <main>
-      <div class="brand"><span class="mark" aria-hidden="true">S</span><span>Suxin</span></div>
+      <div class="brand">
+        <picture>
+          <source srcset="/brand/logo-name-white.png" media="(prefers-color-scheme: dark)" />
+          <img src="/brand/logo-name.png" alt="Suxin" height="30" />
+        </picture>
+      </div>
       <h1>退出登录？</h1>
       <p>你将退出 Suxin 统一账号，并返回 <span class="app">${escapeHtml(appName)}</span>。退出后，其他应用需要重新登录。</p>
       <form method="post" action="${CONFIRM_PATH}">
