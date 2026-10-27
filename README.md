@@ -169,6 +169,12 @@ curl -s https://login.ljhsu.xin/api/auth/.well-known/openid-configuration | head
 - 目前只有 `login.ljhsu.xin` 一个环境，没有独立的 staging 域名。
 - 各应用自行保存会话，登出应用不会自动踢掉 IdP 登录态（可用 OIDC `end_session_endpoint` 实现）。
 
+## 已接入应用
+
+| 应用 | 回调地址 | 状态 |
+| --- | --- | --- |
+| EchoMind | `https://echomind.ljhsu.xin/auth/callback` | 已接入，登录可选（`worker/auth.ts`，签名 Cookie 保存 sub/昵称/邮箱） |
+
 ## 接入文档
 
 - [docs/client-integration.md](docs/client-integration.md)：应用侧 OIDC 接入步骤与示例代码
