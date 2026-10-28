@@ -512,6 +512,28 @@ type AdminRefundItem = {
   message: string | null
 }
 type AdminRefundDetail = { request: AdminRefund; items: AdminRefundItem[] }
+type AdminReconcileReport = {
+  id: string
+  createdAt: number
+  usersChecked: number
+  mismatches: number
+  expiredRefunds: number
+  skippedItems: number
+  detail?: {
+    trigger?: string
+    balanceMismatches?: { userId: string; balance: number; ledger: number }[]
+    invalidLots?: { userId: string; lotId: string; credits: number; remaining: number }[]
+  } | null
+}
+const PAGE_SIZE = 30
+const REFUND_FILTERS: [string, string][] = [
+  ['', '全部'],
+  ['pending', '待审核'],
+  ['completed', '已完成'],
+  ['failed', '部分失败'],
+  ['rejected', '已拒绝'],
+  ['expired', '已失效'],
+]
 
 const money = (cents: number) => `¥${(cents / 100).toFixed(2)}`
 /**
@@ -800,6 +822,10 @@ export function Refunds() {
 export function AdminRefunds() {
   const { data: session, isPending } = authClient.useSession()
   const [requests, setRequests] = useState<AdminRefund[]>([])
+  const [total, setTotal] = useState(0)
+  const [counts, setCounts] = useState<Record<string, number>>({})
+  const [statusFilter, setStatusFilter] = useState('')
+  const [offset, setOffset] = useState(0)
   const [details, setDetails] = useState<Record<string, AdminRefundDetail>>({})
   const [openId, setOpenId] = useState('')
   const [detailLoading, setDetailLoading] = useState('')
@@ -808,12 +834,42 @@ export function AdminRefunds() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState('')
+  const [reconcile, setReconcile] = useState<AdminReconcileReport | null>(null)
+  const [reconcileBusy, setReconcileBusy] = useState(false)
 
   async function load(signal?: AbortSignal) {
-    const response = await fetch('/api/admin/refunds', { signal })
-    const data = await response.json() as { requests?: AdminRefund[]; error?: string }
+    const query = new URLSearchParams()
+    if (statusFilter) query.set('status', statusFilter)
+    query.set('limit', String(PAGE_SIZE))
+    query.set('offset', String(offset))
+    const response = await fetch(`/api/admin/refunds?${query}`, { signal })
+    const data = await response.json() as { requests?: AdminRefund[]; total?: number; counts?: Record<string, number>; error?: string }
     if (!response.ok) throw new Error(data.error || '读取退款申请失败')
     setRequests(data.requests ?? [])
+    setTotal(data.total ?? 0)
+    setCounts(data.counts ?? {})
+  }
+
+  async function loadReconcile(signal?: AbortSignal) {
+    const response = await fetch('/api/admin/reconcile', { signal })
+    const data = await response.json() as { report?: AdminReconcileReport | null; error?: string }
+    if (!response.ok) throw new Error(data.error || '读取对账结果失败')
+    setReconcile(data.report ?? null)
+  }
+
+  async function runReconcile() {
+    setReconcileBusy(true); setError(''); setNotice('')
+    try {
+      const response = await fetch('/api/admin/reconcile', { method: 'POST' })
+      const data = await response.json().catch(() => ({})) as { mismatches?: number; expiredRefunds?: number; error?: string }
+      if (!response.ok) throw new Error(data.error || '对账失败')
+      setNotice(`对账完成：检查 ${data.expiredRefunds ?? 0} 条超时申请，${(data.mismatches ?? 0) === 0 ? '余额与台账一致' : `${data.mismatches} 处不一致`}。`)
+      await Promise.all([loadReconcile(), load()])
+    } catch (error) {
+      setError(error instanceof Error ? error.message : '对账失败')
+    } finally {
+      setReconcileBusy(false)
+    }
   }
 
   useEffect(() => {
@@ -822,6 +878,13 @@ export function AdminRefunds() {
     void load(controller.signal).catch(error => {
       if (!controller.signal.aborted) setError(error instanceof Error ? error.message : '读取退款申请失败')
     })
+    return () => controller.abort()
+  }, [session, statusFilter, offset])
+
+  useEffect(() => {
+    if (!session) return
+    const controller = new AbortController()
+    void loadReconcile(controller.signal).catch(() => { /* 对账结果只是辅助信息，失败不阻断列表。 */ })
     return () => controller.abort()
   }, [session])
 
@@ -902,6 +965,40 @@ export function AdminRefunds() {
       <div className="grid gap-3">
         {error && <Notice kind="danger">{error}</Notice>}
         {notice && <Notice kind="success">{notice}</Notice>}
+        <section className="rounded-xl border border-border bg-surface-secondary p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold">对账</h2>
+              <p className="mt-1 text-xs leading-relaxed text-muted">
+                {reconcile
+                  ? `上次对账 ${shortDate(reconcile.createdAt)}（${reconcile.detail?.trigger === 'manual' ? '手动' : '定时'}）：检查 ${reconcile.usersChecked} 个账号，${reconcile.mismatches === 0 ? '余额与台账一致' : `${reconcile.mismatches} 处不一致`}，失效申请 ${reconcile.expiredRefunds} 条`
+                  : '还没有对账记录，每天 11:23 自动跑一次。'}
+              </p>
+            </div>
+            <Button variant="outline" isDisabled={reconcileBusy} isPending={reconcileBusy} onPress={() => void runReconcile()}>立即对账</Button>
+          </div>
+          {reconcile && reconcile.mismatches > 0 && (
+            <div className="mt-2 grid gap-1 border-t border-separator pt-2 text-xs text-muted">
+              {(reconcile.detail?.balanceMismatches ?? []).map(row => (
+                <p key={row.userId}>账号 {row.userId.slice(0, 8)}…：余额 {row.balance} ≠ 台账 {row.ledger}</p>
+              ))}
+              {(reconcile.detail?.invalidLots ?? []).map(row => (
+                <p key={row.lotId}>订单 {row.lotId.slice(0, 8)}…：剩余 {row.remaining} / 总额 {row.credits}</p>
+              ))}
+            </div>
+          )}
+        </section>
+        <div className="flex flex-wrap gap-2">
+          {REFUND_FILTERS.map(([value, label]) => (
+            <Button
+              key={value || 'all'}
+              variant={statusFilter === value ? 'secondary' : 'outline'}
+              onPress={() => { setStatusFilter(value); setOffset(0) }}
+            >
+              {label}{value ? ` ${counts[value] ?? 0}` : ` ${Object.values(counts).reduce((sum, count) => sum + count, 0)}`}
+            </Button>
+          ))}
+        </div>
         {requests.length === 0 ? <p className="text-sm text-muted">暂无退款申请。</p> : requests.map(item => {
           const detail = details[item.id]
           const isOpen = openId === item.id
@@ -991,6 +1088,13 @@ export function AdminRefunds() {
             </section>
           )
         })}
+        <div className="flex items-center justify-between gap-2 text-xs text-muted">
+          <span>共 {total} 条，当前第 {total === 0 ? 0 : Math.floor(offset / PAGE_SIZE) + 1} 页</span>
+          <div className="flex gap-2">
+            <Button variant="outline" isDisabled={offset === 0} onPress={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>上一页</Button>
+            <Button variant="outline" isDisabled={offset + PAGE_SIZE >= total} onPress={() => setOffset(offset + PAGE_SIZE)}>下一页</Button>
+          </div>
+        </div>
         <p className="mt-2 text-center text-sm text-muted"><TextLink href="/account">返回账户</TextLink></p>
       </div>
     </AuthShell>

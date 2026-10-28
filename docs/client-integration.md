@@ -233,7 +233,8 @@ Content-Type: application/json
 
 5. 用户页面：`https://account.ljhsu.xin/credits`（余额、充值入口、用量）、`/refunds`、`/terms/refund`。应用只链接，不代理退款申请。充值只能由持有支付商户号的接入应用发起，所以 `/credits` 的充值按钮跳转到应用的充值页（目前为 `https://echomind.ljhsu.xin/?recharge=<积分>`），金额由应用按 1 积分 = ¥0.01 重算。
 6. 退款按**审核时**计算 12 个月与最终金额；一个账号同一时间一笔处理中退款（超过 14 天未审核自动失效，可重新提交）；超过 12 个月的支付宝订单转人工处理。
-7. 审核状态：`pending` → `completed`（全部成功）/ `failed`（部分失败，可对同一申请重试失败项）/ `rejected`（拒绝或金额不足 0.01 元）/ `expired`（超时失效）；订单级明细在管理员界面可展开查看渠道单号与失败原因。
+7. 管理员在 `https://account.ljhsu.xin/admin/refunds` 审核（需要 `user.role='admin'`）：可按状态筛选、分页、展开订单级明细，顶部显示每日对账结果（`reconcile_report`），并支持「立即对账」。
+8. 审核状态：`pending` → `completed`（全部成功）/ `failed`（部分失败，可对同一申请重试失败项）/ `rejected`（拒绝或金额不足 0.01 元）/ `expired`（超时失效）；订单级明细在管理员界面可展开查看渠道单号与失败原因。
 
 ## 8. 给 EchoMind 的建议接法
 

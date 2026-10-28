@@ -1,6 +1,6 @@
 import { verifyOAuthQueryParams } from '@better-auth/oauth-provider'
 import { createAuth } from './auth'
-import { getBalance, getRefundEstimate } from './credits'
+import { REFUND_PENDING_TTL_MS, getBalance, getRefundEstimate } from './credits'
 import type { Env } from './env'
 
 export { AccountDO } from './accountDO'
@@ -246,13 +246,30 @@ async function handleAdminRefunds(request: Request, env: Env): Promise<Response>
   if (request.method !== 'GET') return methodNotAllowed()
   const user = await requireUser(request, env)
   if (!isAdmin(env, request, user)) return json({ error: '无权限' }, 403)
-  const rows = await env.DB.prepare(
+  const url = new URL(request.url)
+  const status = (url.searchParams.get('status') || '').trim()
+  if (status && !/^[a-z]+$/.test(status)) return json({ error: '状态筛选无效' }, 400)
+  const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit')) || 30))
+  const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0)
+  const where = status ? 'where r.status = ?' : ''
+  const countStatement = env.DB.prepare(`select count(*) as total from refund_request r ${where}`)
+  const totalRow = await (status ? countStatement.bind(status) : countStatement).first<{ total: number }>()
+  const listStatement = env.DB.prepare(
     `select r.*, u.email as user_email, u.name as user_name
      from refund_request r left join user u on u.id = r.user_id
+     ${where}
      order by case r.status when 'pending' then 0 when 'reviewing' then 1 else 2 end, r.created_at desc
-     limit 100`,
-  ).all()
-  return json({ requests: rows.results ?? [] })
+     limit ? offset ?`,
+  )
+  const rows = await (status ? listStatement.bind(status, limit, offset) : listStatement.bind(limit, offset)).all()
+  const counts = await env.DB.prepare('select status, count(*) as total from refund_request group by status').all<{ status: string; total: number }>()
+  return json({
+    requests: rows.results ?? [],
+    total: totalRow?.total ?? 0,
+    limit,
+    offset,
+    counts: Object.fromEntries((counts.results ?? []).map(row => [row.status, row.total])),
+  })
 }
 
 async function handleAdminRefundDetail(request: Request, env: Env, id: string): Promise<Response> {
@@ -286,6 +303,112 @@ async function handleAdminReview(request: Request, env: Env, id: string): Promis
     action: body.action,
     note: body.note,
     admin: user?.email || 'admin-token',
+  })
+}
+
+type ReconcileResult = {
+  id: string
+  createdAt: number
+  trigger: string
+  usersChecked: number
+  expiredRefunds: number
+  skippedItems: number
+  mismatches: number
+  balanceMismatches: { userId: string; balance: number; ledger: number }[]
+  invalidLots: { userId: string; lotId: string; credits: number; remaining: number }[]
+}
+
+/**
+ * 对账：每天定时跑一次，也可由管理员手动触发。
+ * 1) 主动失效超过 14 天仍未审核的申请（不依赖用户重新提交）；
+ * 2) 校验每个账号 `sum(credit_lot.remaining)` 与 `sum(credit_ledger.delta)` 是否相等，
+ *    以及 `remaining` 是否越界（所有余额变动都会写台账，两个汇总理应一致）；
+ * 3) 结果写 `reconcile_report`，不一致时打 error 日志供告警。
+ */
+async function runReconcile(env: Env, trigger: string): Promise<ReconcileResult> {
+  const now = Date.now()
+  const expired = await env.DB.prepare(
+    "update refund_request set status = 'expired', completed_at = ?, note = ? where status in ('pending','reviewing') and created_at < ?",
+  ).bind(now, '超过 14 天未审核，申请已自动失效；可重新提交。', now - REFUND_PENDING_TTL_MS).run()
+  const skipped = await env.DB.prepare(
+    "update refund_item set status = 'skipped', message = ? where status = 'pending' and refund_id in (select id from refund_request where status = 'expired')",
+  ).bind('退款申请已失效').run()
+
+  const users = await env.DB.prepare('select count(distinct user_id) as total from credit_lot').first<{ total: number }>()
+  const balanceMismatches = await env.DB.prepare(
+    `select l.user_id as userId, sum(l.remaining) as balance,
+            coalesce((select sum(g.delta) from credit_ledger g where g.user_id = l.user_id), 0) as ledger
+     from credit_lot l group by l.user_id
+     having sum(l.remaining) <> coalesce((select sum(g.delta) from credit_ledger g where g.user_id = l.user_id), 0)
+     limit 50`,
+  ).all<{ userId: string; balance: number; ledger: number }>()
+  const invalidLots = await env.DB.prepare(
+    'select user_id as userId, id as lotId, credits, remaining from credit_lot where remaining < 0 or remaining > credits limit 50',
+  ).all<{ userId: string; lotId: string; credits: number; remaining: number }>()
+
+  const result: ReconcileResult = {
+    id: crypto.randomUUID(),
+    createdAt: now,
+    trigger,
+    usersChecked: users?.total ?? 0,
+    expiredRefunds: expired.meta?.changes ?? 0,
+    skippedItems: skipped.meta?.changes ?? 0,
+    mismatches: (balanceMismatches.results ?? []).length + (invalidLots.results ?? []).length,
+    balanceMismatches: balanceMismatches.results ?? [],
+    invalidLots: invalidLots.results ?? [],
+  }
+
+  await env.DB.prepare(
+    'insert into reconcile_report (id, created_at, users_checked, mismatches, expired_refunds, skipped_items, detail) values (?, ?, ?, ?, ?, ?, ?)',
+  ).bind(
+    result.id,
+    now,
+    result.usersChecked,
+    result.mismatches,
+    result.expiredRefunds,
+    result.skippedItems,
+    JSON.stringify({ trigger, balanceMismatches: result.balanceMismatches, invalidLots: result.invalidLots }),
+  ).run()
+  // 只保留最近 30 次报告，避免表无限增长。
+  await env.DB.prepare(
+    'delete from reconcile_report where id not in (select id from reconcile_report order by created_at desc limit 30)',
+  ).run()
+
+  if (result.mismatches > 0) console.error('[reconcile] 余额与台账不一致', JSON.stringify(result))
+  else console.log('[reconcile] 对账通过', JSON.stringify({ usersChecked: result.usersChecked, expiredRefunds: result.expiredRefunds }))
+  return result
+}
+
+async function handleAdminReconcile(request: Request, env: Env): Promise<Response> {
+  const user = await requireUser(request, env)
+  if (!isAdmin(env, request, user)) return json({ error: '无权限' }, 403)
+  if (request.method === 'POST') {
+    if (!sameOrigin(request)) return json({ error: '跨站请求被拒绝' }, 403)
+    return json(await runReconcile(env, 'manual'))
+  }
+  if (request.method !== 'GET') return methodNotAllowed()
+  const row = await env.DB.prepare('select * from reconcile_report order by created_at desc limit 1').first<{
+    id: string
+    created_at: number
+    users_checked: number
+    mismatches: number
+    expired_refunds: number
+    skipped_items: number
+    detail: string | null
+  }>()
+  if (!row) return json({ report: null })
+  let detail: unknown = null
+  try { detail = row.detail ? JSON.parse(row.detail) : null } catch { detail = null }
+  return json({
+    report: {
+      id: row.id,
+      createdAt: row.created_at,
+      usersChecked: row.users_checked,
+      mismatches: row.mismatches,
+      expiredRefunds: row.expired_refunds,
+      skippedItems: row.skipped_items,
+      detail,
+    },
   })
 }
 
@@ -448,6 +571,7 @@ export default {
     if (url.pathname === '/api/account/refunds') return handleAccountRefunds(request, env)
 
     if (url.pathname === '/api/admin/refunds') return handleAdminRefunds(request, env)
+    if (url.pathname === '/api/admin/reconcile') return handleAdminReconcile(request, env)
     if (url.pathname === '/api/admin/refunds/platform') return handleAdminPlatformRefund(request, env)
     if (url.pathname === '/api/admin/credits/import') return handleAdminImport(request, env)
     const reviewMatch = /^\/api\/admin\/refunds\/([^/]+)\/review$/.exec(url.pathname)
@@ -471,5 +595,10 @@ export default {
 
     if (env.ASSETS) return env.ASSETS.fetch(request)
     return new Response('Not found', { status: 404 })
+  },
+
+  /** Cron（每天）：主动失效超时退款申请 + 余额/台账对账。 */
+  async scheduled(_event: ScheduledController, env: Env): Promise<void> {
+    await runReconcile(env, 'cron')
   },
 } satisfies ExportedHandler<Env>

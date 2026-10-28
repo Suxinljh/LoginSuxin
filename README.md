@@ -61,14 +61,23 @@ pnpm dev                # 同时启动 wrangler dev (:8787) 和 Vite (:5173)
 
 ### 把账号设为管理员
 
-只有管理员能创建 OAuth 客户端：
+只有管理员能创建 OAuth 客户端、审核退款：
 
 ```bash
 pnpm exec wrangler d1 execute login-suxin --local \
   --command "update user set role='admin' where email='you@example.com'"
 ```
 
-远程数据库把 `--local` 换成 `--remote`。
+远程数据库把 `--local` 换成 `--remote`，改完刷新页面（必要时重新登录）即可生效。
+
+### 审核退款
+
+管理员登录后打开 **https://account.ljhsu.xin/admin/refunds**（也可从 `/account` → 「充值积分」→ `/credits` → 「申请退款」旁边的入口进入）：
+
+- 列表按状态筛选、分页，可展开每个申请的订单级明细（订单号、渠道单号、失败原因）；
+- 「通过并退款」会弹出金额确认，提交后按审核时余额重算最终金额，12 个月内的订单自动原路退款，超过 12 个月转人工；
+- 部分失败可对同一申请重试失败项，已退款/转人工的不会重复处理；
+- 页面顶部显示最近一次对账结果，可点「立即对账」手动跑一次（每天 11:23 也会自动跑）。
 
 ### 创建 OAuth 客户端
 
