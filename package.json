@@ -17,7 +17,8 @@
     "preview:email": "node scripts/preview-email.mjs",
     "deploy:staging": "pnpm build && wrangler deploy -c wrangler.staging.jsonc",
     "db:migrate:staging": "wrangler d1 migrations apply login-suxin-staging --remote -c wrangler.staging.jsonc",
-    "tail:staging": "wrangler tail login-suxin-staging -c wrangler.staging.jsonc"
+    "tail:staging": "wrangler tail login-suxin-staging -c wrangler.staging.jsonc",
+    "secrets:staging": "bash scripts/set-staging-secrets.sh"
   },
   "dependencies": {
     "@better-auth/oauth-provider": "^1.7.14",
