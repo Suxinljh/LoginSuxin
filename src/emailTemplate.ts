@@ -9,8 +9,8 @@
  * - 同时提供纯文本版本。
  */
 
-const LOGO_URL = 'https://login.ljhsu.xin/brand/logo-name.png'
-const SITE_URL = 'https://login.ljhsu.xin'
+const LOGO_URL = 'https://account.ljhsu.xin/brand/logo-name.png'
+const SITE_URL = 'https://account.ljhsu.xin'
 const ACCENT = '#2563eb'
 const INK = '#111827'
 const BODY = '#4b5563'

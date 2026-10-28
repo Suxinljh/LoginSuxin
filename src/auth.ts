@@ -27,7 +27,7 @@ function socialProviders(env: Env) {
 
 async function sendEmail(env: Env, to: string, subject: string, content: EmailContent): Promise<void> {
   // 发件域名必须是在 Cloudflare Email Sending 中已启用的域名（当前为 mail.ljhsu.xin）。
-  const from = env.EMAIL_FROM || 'Suxin Login <login@mail.ljhsu.xin>'
+  const from = env.EMAIL_FROM || 'Suxin Account <login@mail.ljhsu.xin>'
   if (!env.EMAIL) {
     // 未绑定 send_email 时的兜底：把内容打到控制台，方便本地排查。
     console.log(`[email:no-binding] to=${to}\nsubject=${subject}\n${content.text}`)
@@ -41,7 +41,7 @@ export function createAuth(env: Env) {
   const requireVerification = env.REQUIRE_EMAIL_VERIFICATION === 'true'
 
   return betterAuth({
-    appName: 'Suxin Login',
+    appName: 'Suxin Account',
     baseURL: env.BETTER_AUTH_URL,
     secret: env.BETTER_AUTH_SECRET,
     // D1 通过 drizzle 适配器访问：schema.ts 里的物理表名/列名是 snake_case，

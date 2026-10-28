@@ -17,12 +17,12 @@ const samples = [
   {
     file: 'verify',
     render: renderVerificationEmail,
-    url: 'https://login.ljhsu.xin/api/auth/verify-email?token=preview-token',
+    url: 'https://account.ljhsu.xin/api/auth/verify-email?token=preview-token',
   },
   {
     file: 'reset-password',
     render: renderPasswordResetEmail,
-    url: 'https://login.ljhsu.xin/api/auth/reset-password/preview-token?callbackURL=https%3A%2F%2Flogin.ljhsu.xin%2Freset-password',
+    url: 'https://account.ljhsu.xin/api/auth/reset-password/preview-token?callbackURL=https%3A%2F%2Faccount.ljhsu.xin%2Freset-password',
   },
 ]
 
