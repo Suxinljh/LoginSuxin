@@ -15,8 +15,12 @@ export const TURNSTILE_PROTECTED_PATHS = new Set([
   '/api/auth/forget-password',
 ])
 
+/**
+ * 两个 key 都配齐才算启用。只配 secret 会让服务端要求 token 而前端不渲染 widget，
+ * 登录直接被卡死；只配 site key 则前端不渲染、服务端也不校验（等于没开）。
+ */
 export function turnstileEnabled(env: Env): boolean {
-  return Boolean(env.TURNSTILE_SECRET_KEY)
+  return Boolean(env.TURNSTILE_SITE_KEY && env.TURNSTILE_SECRET_KEY)
 }
 
 /** 前端渲染 widget 用的公开 site key；没配置时前端不渲染。 */
