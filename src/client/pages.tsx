@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 're
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { Button, Chip, Spinner } from '@heroui/react'
 import { authClient } from './auth-client'
-import { AuthShell, FormField, Notice, SocialButtons, StatusChip, SubmitButton, TextLink, errorText } from './components'
+import { AuthShell, FormField, Notice, SocialButtons, StatusChip, SubmitButton, TextLink, TurnstileWidget, errorText, useTurnstileSiteKey } from './components'
 
 function useOAuthFlow(): boolean {
   return useMemo(() => {
@@ -32,15 +32,29 @@ export function SignIn() {
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
   const oauthFlow = useOAuthFlow()
+  const siteKey = useTurnstileSiteKey()
+  const [turnstileToken, setTurnstileToken] = useState('')
+  const [turnstileNonce, setTurnstileNonce] = useState(0)
 
   async function submit(event: FormEvent) {
     event.preventDefault()
     setError('')
+    if (siteKey && !turnstileToken) {
+      setError('请先完成人机验证。')
+      return
+    }
     setLoading(true)
-    const { error } = await authClient.signIn.email({ email, password })
+    const { error } = await authClient.signIn.email({
+      email,
+      password,
+      fetchOptions: turnstileToken ? { headers: { 'x-turnstile-token': turnstileToken } } : undefined,
+    })
     setLoading(false)
     if (error) {
       setError(errorText(error))
+      // 验证 token 一次性，失败后必须换新的 widget。
+      setTurnstileToken('')
+      setTurnstileNonce(value => value + 1)
       return
     }
     // OAuth 流程由 oauthProviderClient 自动继续；普通登录回到账户页。
@@ -56,6 +70,7 @@ export function SignIn() {
         <div className="-mt-1 flex justify-end text-sm">
           <TextLink href="/forgot-password">忘记密码？</TextLink>
         </div>
+        <TurnstileWidget key={`signin-${turnstileNonce}`} siteKey={siteKey} onToken={setTurnstileToken} />
         <SubmitButton loading={loading}>登录</SubmitButton>
       </form>
       <SocialButtons onError={setError} />
@@ -76,6 +91,9 @@ export function SignUp() {
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
   const oauthFlow = useOAuthFlow()
+  const siteKey = useTurnstileSiteKey()
+  const [turnstileToken, setTurnstileToken] = useState('')
+  const [turnstileNonce, setTurnstileNonce] = useState(0)
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -84,11 +102,22 @@ export function SignUp() {
       setError('两次输入的密码不一致。')
       return
     }
+    if (siteKey && !turnstileToken) {
+      setError('请先完成人机验证。')
+      return
+    }
     setLoading(true)
-    const { error } = await authClient.signUp.email({ email, password, name })
+    const { error } = await authClient.signUp.email({
+      email,
+      password,
+      name,
+      fetchOptions: turnstileToken ? { headers: { 'x-turnstile-token': turnstileToken } } : undefined,
+    })
     setLoading(false)
     if (error) {
       setError(errorText(error))
+      setTurnstileToken('')
+      setTurnstileNonce(value => value + 1)
       return
     }
     setDone(true)
@@ -115,6 +144,7 @@ export function SignUp() {
         <FormField label="邮箱" type="email" autoComplete="email" value={email} onChange={setEmail} placeholder="you@example.com" />
         <FormField label="密码" type="password" autoComplete="new-password" minLength={8} value={password} onChange={setPassword} placeholder="至少 8 位" />
         <FormField label="确认密码" type="password" autoComplete="new-password" minLength={8} value={confirm} onChange={setConfirm} placeholder="再输入一次" />
+        <TurnstileWidget key={`signup-${turnstileNonce}`} siteKey={siteKey} onToken={setTurnstileToken} />
         <SubmitButton loading={loading}>创建账号</SubmitButton>
       </form>
       <SocialButtons onError={setError} />
@@ -130,18 +160,28 @@ export function ForgotPassword() {
   const [error, setError] = useState('')
   const [sent, setSent] = useState(false)
   const [loading, setLoading] = useState(false)
+  const siteKey = useTurnstileSiteKey()
+  const [turnstileToken, setTurnstileToken] = useState('')
+  const [turnstileNonce, setTurnstileNonce] = useState(0)
 
   async function submit(event: FormEvent) {
     event.preventDefault()
     setError('')
+    if (siteKey && !turnstileToken) {
+      setError('请先完成人机验证。')
+      return
+    }
     setLoading(true)
     const { error } = await authClient.requestPasswordReset({
       email,
       redirectTo: `${window.location.origin}/reset-password`,
+      fetchOptions: turnstileToken ? { headers: { 'x-turnstile-token': turnstileToken } } : undefined,
     })
     setLoading(false)
     if (error) {
       setError(errorText(error))
+      setTurnstileToken('')
+      setTurnstileNonce(value => value + 1)
       return
     }
     setSent(true)
@@ -161,6 +201,7 @@ export function ForgotPassword() {
       <form className="grid gap-4" onSubmit={submit}>
         {error && <Notice kind="danger">{error}</Notice>}
         <FormField label="邮箱" type="email" autoComplete="email" value={email} onChange={setEmail} placeholder="you@example.com" />
+        <TurnstileWidget key={`forgot-${turnstileNonce}`} siteKey={siteKey} onToken={setTurnstileToken} />
         <SubmitButton loading={loading}>发送重置邮件</SubmitButton>
       </form>
       <p className="mt-5 text-center text-sm text-muted"><TextLink href="/sign-in">返回登录</TextLink></p>
@@ -417,6 +458,8 @@ const CHANGELOG = [
       '充值入口：套餐 100/1000/5000 积分或自定义 50～1,000,000 积分，跳转到 EchoMind 充值页；账户页的积分改为一行入口。',
       '退款审核页支持状态筛选、分页、订单级明细与金额确认；每天自动对账并在页面显示结果。',
       '登录、注册、找回密码等凭据接口按 IP 限流；管理员操作（审核、导入、更正、对账）记入审计。',
+      '可选开启 Cloudflare Turnstile 人机验证（登录、注册、找回密码），未配置时行为不变。',
+      '新增 staging 环境 https://staging.ljhsu.xin，用于验证迁移与回调，不接触生产数据。',
     ],
   },
   {

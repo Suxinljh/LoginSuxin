@@ -60,6 +60,12 @@ pnpm dev                # 同时启动 wrangler dev (:8787) 和 Vite (:5173)
 - 端口被占用时：`WEB_PORT=5183 WORKER_PORT=8788 pnpm dev`，同时把 `.dev.vars` 的 `BETTER_AUTH_URL` 改成 `http://localhost:5183`。
 - `TRUSTED_ORIGINS` 里的 `http://account.ljhsu.xin` 是 wrangler 对 `routes` 自定义域名重写后的来源，本地也不要删，否则登录会返回 `Invalid origin`。
 
+### 环境与可选能力
+
+- **staging**：`https://staging.ljhsu.xin`（Worker `login-suxin-staging`，独立 D1），用 `pnpm deploy:staging` / `pnpm db:migrate:staging` 部署与迁移，详见 `docs/staging.md`。
+- **Turnstile 人机验证（可选）**：同时配置 `TURNSTILE_SITE_KEY`（vars）与 `TURNSTILE_SECRET_KEY`（secret）后，登录、注册、找回密码表单会渲染 widget 并在服务端用 `siteverify` 校验；未配置时流程完全不变。本地联调可用官方测试 key（site `1x00000000000000000000AA`、secret `1x0000000000000000000000000000AA`）。校验服务自身超时/不可用时放行并记日志，此时仍由按 IP 的登录限流兜底。
+- **登录限流**：`sign-in` 15 次/10 分钟、`sign-up` 10 次、`forget-password` / `reset-password` / `change-email` 等 5 次，按 IP 用 D1 固定窗口计数；OAuth `token`/`userinfo` 等服务端调用不限流。
+
 ### 把账号设为管理员
 
 只有管理员能创建 OAuth 客户端、审核退款：

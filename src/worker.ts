@@ -2,6 +2,7 @@ import { verifyOAuthQueryParams } from '@better-auth/oauth-provider'
 import { createAuth } from './auth'
 import { REFUND_PENDING_TTL_MS, getBalance, getRefundEstimate } from './credits'
 import { allowRequest, cleanupRateLimit } from './rateLimit'
+import { TURNSTILE_PROTECTED_PATHS, turnstileEnabled, turnstileSiteKey, verifyTurnstile } from './turnstile'
 import type { Env } from './env'
 
 export { AccountDO } from './accountDO'
@@ -674,6 +675,8 @@ export default {
       return json({
         github: Boolean(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET),
         google: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
+        // 前端据此渲染 Turnstile widget；未配置时为 null。
+        turnstile: turnstileEnabled(env) ? turnstileSiteKey(env) : null,
       })
     }
 
@@ -717,6 +720,12 @@ export default {
       if (request.method === 'POST') {
         const limited = await limitAuth(request, env, url.pathname)
         if (limited) return limited
+        if (turnstileEnabled(env) && TURNSTILE_PROTECTED_PATHS.has(url.pathname)) {
+          const token = request.headers.get('x-turnstile-token') || ''
+          if (!token) return json({ error: '请先完成人机验证' }, 400)
+          const client = request.headers.get('cf-connecting-ip') || undefined
+          if (!(await verifyTurnstile(env, token, client))) return json({ error: '人机验证未通过，请重试' }, 400)
+        }
       }
       // Better Auth 在 Workers 上需要按请求创建实例，不能放在模块顶层复用。
       return createAuth(env).handler(request)

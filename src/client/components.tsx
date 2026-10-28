@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Alert, Button, Card, Chip, Description, Input, Label, Link, Separator, Spinner, TextField } from '@heroui/react'
 import { authClient } from './auth-client'
 
@@ -180,6 +180,79 @@ export function SocialButtons({ onError }: { onError: (message: string) => void 
       </div>
     </>
   )
+}
+
+type TurnstileApi = {
+  render: (element: HTMLElement, options: Record<string, unknown>) => string
+  remove: (id?: string) => void
+}
+
+const TURNSTILE_SCRIPT = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
+let turnstileLoader: Promise<TurnstileApi | null> | null = null
+
+function loadTurnstile(): Promise<TurnstileApi | null> {
+  if (!turnstileLoader) {
+    turnstileLoader = new Promise<TurnstileApi | null>(resolve => {
+      const existing = (window as { turnstile?: TurnstileApi }).turnstile
+      if (existing) { resolve(existing); return }
+      const script = document.createElement('script')
+      script.src = TURNSTILE_SCRIPT
+      script.async = true
+      script.defer = true
+      script.onload = () => resolve((window as { turnstile?: TurnstileApi }).turnstile ?? null)
+      // 被拦截或加载失败时不阻塞提交：服务端校验失败会给明确提示。
+      script.onerror = () => resolve(null)
+      document.head.appendChild(script)
+    })
+  }
+  return turnstileLoader
+}
+
+/** 拉取 Turnstile site key；未配置（null）时不渲染 widget，也不带 token。 */
+export function useTurnstileSiteKey(): string | null {
+  const [siteKey, setSiteKey] = useState<string | null>(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch('/api/providers', { signal: controller.signal })
+      .then(response => (response.ok ? response.json() : null))
+      .then(data => {
+        const value = (data as { turnstile?: unknown } | null)?.turnstile
+        if (typeof value === 'string' && value) setSiteKey(value)
+      })
+      .catch(() => { /* 拿不到 site key 时按未启用处理。 */ })
+    return () => controller.abort()
+  }, [])
+  return siteKey
+}
+
+export function TurnstileWidget({ siteKey, onToken }: { siteKey: string | null; onToken: (token: string) => void }) {
+  const container = useRef<HTMLDivElement | null>(null)
+  const callback = useRef(onToken)
+  useEffect(() => { callback.current = onToken }, [onToken])
+
+  useEffect(() => {
+    if (!siteKey || !container.current) return
+    let widgetId: string | undefined
+    let cancelled = false
+    void loadTurnstile().then(api => {
+      if (!api || cancelled || !container.current) return
+      widgetId = api.render(container.current, {
+        sitekey: siteKey,
+        theme: 'auto',
+        size: 'flexible',
+        callback: (token: string) => callback.current(token),
+        'expired-callback': () => callback.current(''),
+        'error-callback': () => callback.current(''),
+      })
+    })
+    return () => {
+      cancelled = true
+      if (widgetId) (window as { turnstile?: TurnstileApi }).turnstile?.remove(widgetId)
+    }
+  }, [siteKey])
+
+  if (!siteKey) return null
+  return <div ref={container} className="flex justify-center" />
 }
 
 export function StatusChip({ verified }: { verified: boolean }) {

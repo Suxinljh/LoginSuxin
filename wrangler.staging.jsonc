@@ -1,0 +1,51 @@
+{
+  // 独立 staging 环境：https://staging.ljhsu.xin
+  // 与生产完全隔离（独立 Worker、独立 D1、独立密钥），用于验证迁移、OAuth 回调、
+  // 邮件模板与积分/退款流程，不碰生产数据。部署：pnpm deploy:staging
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "login-suxin-staging",
+  "main": "./src/worker.ts",
+  "compatibility_date": "2026-10-27",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "BETTER_AUTH_URL": "https://staging.ljhsu.xin",
+    "TRUSTED_ORIGINS": "https://staging.ljhsu.xin",
+    // staging 不要求验证邮箱，方便直接注册测试账号；生产仍为 true。
+    "REQUIRE_EMAIL_VERIFICATION": "false",
+    "EMAIL_FROM": "Suxin Staging <login@mail.ljhsu.xin>"
+    // 故意不配置 ECHOMIND_REFUND_URL / ECHOMIND_PAY_ADMIN_TOKEN：
+    // staging 审核退款时应停在“原路退款通道尚未配置”，不会真的退钱。
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "ACCOUNT", "class_name": "AccountDO" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AccountDO"] }],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "send_email": [
+    {
+      "name": "EMAIL",
+      "allowed_sender_addresses": ["login@mail.ljhsu.xin"]
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "login-suxin-staging",
+      "database_id": "2dce3727-71cf-4f20-8925-709c79dec5f6"
+    }
+  ],
+  "routes": [
+    {
+      "pattern": "staging.ljhsu.xin",
+      "custom_domain": true
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}

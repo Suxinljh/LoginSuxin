@@ -22,6 +22,11 @@ EMAIL_FROM=Suxin Account <login@mail.ljhsu.xin>
 # 账号积分：应用服务端凭证（JSON）。本地可用测试 key；生产用 wrangler secret put APP_API_KEYS
 APP_API_KEYS={"echomind":"replace-with-app-key"}
 
+# Cloudflare Turnstile 人机验证（可选）。两个都填才会在登录/注册/找回密码启用；
+# 本地联调可用官方测试 key：site 1x00000000000000000000AA / secret 1x0000000000000000000000000000AA
+TURNSTILE_SITE_KEY=
+TURNSTILE_SECRET_KEY=
+
 # 脚本导入/审核/平台原因退款令牌（可选；也可用 admin 角色会话）
 CREDITS_ADMIN_TOKEN=replace-with-admin-token
 
