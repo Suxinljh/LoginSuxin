@@ -33,9 +33,9 @@ pnpm tail:staging
 ## 要让 staging 完整可用，还需要在控制台做的几件事
 
 1. **OAuth 回调**：GitHub OAuth App 与 Google OAuth Client 各加一条
-   `https://staging.ljhsu.xin/api/auth/callback/github` / `.../google`（可以复用生产的 client id/secret，
-   再把它们作为 `wrangler secret put GITHUB_CLIENT_ID ... -c wrangler.staging.jsonc` 等写入；
-   也可以为 staging 单独申请一套，更干净）。
+   `https://staging.ljhsu.xin/api/auth/callback/github` / `.../google`，然后执行
+   `pnpm secrets:staging` 写入四个 client id/secret（交互式读取，不进命令历史）。
+   想更彻底隔离就为 staging 单独申请一套 OAuth 应用。
 2. **Turnstile**：在 Cloudflare Turnstile 里新建 widget，把 `staging.ljhsu.xin`（生产再加
    `account.ljhsu.xin`）加进允许的域名列表，然后：
    ```bash
@@ -48,6 +48,13 @@ pnpm tail:staging
    把 `OIDC_ISSUER` 指向 `https://staging.ljhsu.xin/api/auth`、`CREDITS_API_URL` 指向
    `https://staging.ljhsu.xin`，并在 staging 账号中心用 `scripts/create-client.mjs` 建一个 OAuth client。
    这样端到端的登录/计价都能在 staging 跑通。
+
+## 当前状态（2026-10-28）
+
+- 已配置：`BETTER_AUTH_SECRET`、`APP_API_KEYS`、`CREDITS_ADMIN_TOKEN`、`GITHUB_CLIENT_ID/SECRET`、`GOOGLE_CLIENT_ID/SECRET`（值只在 Cloudflare 与 `.local-secrets.json`，不进 Git）。
+- 第三方登录复用生产 App：GitHub OAuth App 已登记 `https://account.ljhsu.xin/...` 与 `https://staging.ljhsu.xin/...` 两个回调（新版 GitHub 支持 Add redirect URL）；Google OAuth client 同样登记了两个 redirect URI。
+- 已验证：`/api/providers` 返回 `{"github":true,"google":true}`；对 staging 与生产分别发起 `POST /api/auth/sign-in/social`，返回的 `redirect_uri` 分别是 `https://staging.ljhsu.xin/api/auth/callback/{github,google}` 与 `https://account.ljhsu.xin/api/auth/callback/{github,google}`，两边互不影响。
+- 未配置：Turnstile（等新建 widget 后填 site key，再用 `wrangler secret put TURNSTILE_SECRET_KEY -c wrangler.staging.jsonc` 写 secret）；原路退款通道（刻意留空）。
 
 ## 验收顺序（每次改账号中心后）
 
