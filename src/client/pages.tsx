@@ -414,6 +414,9 @@ const CHANGELOG = [
       '新增《服务协议与政策》页面：隐私政策、用户协议与积分退款规则合并；客服邮箱以「客服邮箱」四个字作为超链接，不直接展示地址。',
       '积分归属账号而不是单个应用；消费/退款按账号串行，避免计费延迟下的并发退款。',
       '退款按审核时计算 12 个月与最终金额；超过 12 个月的支付宝订单转人工处理。',
+      '充值入口：套餐 100/1000/5000 积分或自定义 50～1,000,000 积分，跳转到 EchoMind 充值页；账户页的积分改为一行入口。',
+      '退款审核页支持状态筛选、分页、订单级明细与金额确认；每天自动对账并在页面显示结果。',
+      '登录、注册、找回密码等凭据接口按 IP 限流；管理员操作（审核、导入、更正、对账）记入审计。',
     ],
   },
   {
@@ -524,6 +527,21 @@ type AdminReconcileReport = {
     balanceMismatches?: { userId: string; balance: number; ledger: number }[]
     invalidLots?: { userId: string; lotId: string; credits: number; remaining: number }[]
   } | null
+}
+type AdminAuditEntry = {
+  id: string
+  actor: string
+  action: string
+  target: string | null
+  detail: Record<string, unknown> | null
+  createdAt: number
+}
+const AUDIT_LABELS: Record<string, string> = {
+  'refund.approve': '通过退款',
+  'refund.reject': '拒绝退款',
+  'credits.import': '导入积分',
+  'credits.correct': '更正积分',
+  'reconcile.run': '手动对账',
 }
 const PAGE_SIZE = 30
 const REFUND_FILTERS: [string, string][] = [
@@ -836,6 +854,7 @@ export function AdminRefunds() {
   const [busy, setBusy] = useState('')
   const [reconcile, setReconcile] = useState<AdminReconcileReport | null>(null)
   const [reconcileBusy, setReconcileBusy] = useState(false)
+  const [audit, setAudit] = useState<AdminAuditEntry[]>([]) 
 
   async function load(signal?: AbortSignal) {
     const query = new URLSearchParams()
@@ -881,10 +900,18 @@ export function AdminRefunds() {
     return () => controller.abort()
   }, [session, statusFilter, offset])
 
+  async function loadAudit(signal?: AbortSignal) {
+    const response = await fetch('/api/admin/audit?limit=20', { signal })
+    const data = await response.json() as { entries?: AdminAuditEntry[]; error?: string }
+    if (!response.ok) throw new Error(data.error || '读取审计记录失败')
+    setAudit(data.entries ?? [])
+  }
+
   useEffect(() => {
     if (!session) return
     const controller = new AbortController()
     void loadReconcile(controller.signal).catch(() => { /* 对账结果只是辅助信息，失败不阻断列表。 */ })
+    void loadAudit(controller.signal).catch(() => { /* 审计记录同理。 */ })
     return () => controller.abort()
   }, [session])
 
@@ -1095,6 +1122,18 @@ export function AdminRefunds() {
             <Button variant="outline" isDisabled={offset + PAGE_SIZE >= total} onPress={() => setOffset(offset + PAGE_SIZE)}>下一页</Button>
           </div>
         </div>
+        <details className="rounded-xl border border-border bg-surface-secondary p-4 text-sm">
+          <summary className="cursor-pointer text-sm font-semibold">操作审计（最近 20 条）</summary>
+          {audit.length === 0 ? <p className="mt-2 text-xs text-muted">暂无记录。</p> : (
+            <div className="mt-2 grid gap-1.5 text-xs text-muted">
+              {audit.map(entry => (
+                <p key={entry.id}>
+                  {shortDate(entry.createdAt)} · {AUDIT_LABELS[entry.action] || entry.action} · {entry.target || '—'} · {entry.actor}
+                </p>
+              ))}
+            </div>
+          )}
+        </details>
         <p className="mt-2 text-center text-sm text-muted"><TextLink href="/account">返回账户</TextLink></p>
       </div>
     </AuthShell>

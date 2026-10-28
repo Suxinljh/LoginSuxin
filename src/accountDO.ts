@@ -105,6 +105,7 @@ export class AccountDO implements DurableObject {
       case 'import': return this.importLots(userId, body)
       case 'apply': return this.apply(userId)
       case 'review': return this.review(body)
+      case 'correctLot': return this.correctLot(userId, body)
       case 'platformRefund': return this.platformRefund(body)
       default: throw new ApiError(400, '未知操作')
     }
@@ -273,6 +274,59 @@ export class AccountDO implements DurableObject {
       }
     }
     return { imported, duplicates, skipped, balance: await getBalance(this.env, userId) }
+  }
+
+  /**
+   * 存量订单更正：用于导入后发现 remaining / 金额 / 支付时间不对。
+   * `remaining` 的差额写一条 `adjust` 台账，保证 sum(ledger) 仍等于余额；
+   * 不允许改 credits（可退金额按 credits 分摊，改了会静默改变退款比例）与归属账号。
+   * 处理中的退款会重算余额，所以先拦住，避免两边同时改钱。
+   */
+  private async correctLot(userId: string, body: Record<string, unknown>) {
+    const appId = requireId(body.appId, 'appId', 64)
+    const orderId = requireId(body.orderId, 'orderId')
+    const lot = await this.env.DB.prepare('select * from credit_lot where app_id = ? and order_id = ?')
+      .bind(appId, orderId)
+      .first<CreditLot>()
+    if (!lot) throw new ApiError(404, '订单不存在')
+    if (lot.user_id !== userId) throw new ApiError(400, '订单归属账号与参数不一致')
+    if (await getPendingRefund(this.env, userId)) {
+      throw new ApiError(409, '该账号有处理中的退款申请，请先处理退款再更正积分')
+    }
+
+    const statements: D1PreparedStatement[] = []
+    const changed: Record<string, { from: number; to: number }> = {}
+    const now = Date.now()
+
+    if (body.remaining !== undefined) {
+      const remaining = requireInt(body.remaining, 'remaining', 0, lot.credits)
+      if (remaining !== lot.remaining) {
+        statements.push(
+          this.env.DB.prepare('update credit_lot set remaining = ? where id = ?').bind(remaining, lot.id),
+          this.env.DB.prepare('insert into credit_ledger (id, user_id, app_id, delta, reason, ref, created_at) values (?, ?, ?, ?, ?, ?, ?)')
+            .bind(crypto.randomUUID(), userId, appId, remaining - lot.remaining, 'adjust', `correct:${orderId}`, now),
+        )
+        changed.remaining = { from: lot.remaining, to: remaining }
+      }
+    }
+    if (body.amountCents !== undefined) {
+      const amountCents = requireInt(body.amountCents, 'amountCents', 1, MAX_AMOUNT_CENTS)
+      if (amountCents !== lot.amount_cents) {
+        statements.push(this.env.DB.prepare('update credit_lot set amount_cents = ? where id = ?').bind(amountCents, lot.id))
+        changed.amountCents = { from: lot.amount_cents, to: amountCents }
+      }
+    }
+    if (body.paidAt !== undefined) {
+      const paidAt = requirePaidAt(body.paidAt)
+      if (paidAt !== lot.paid_at) {
+        statements.push(this.env.DB.prepare('update credit_lot set paid_at = ? where id = ?').bind(paidAt, lot.id))
+        changed.paidAt = { from: lot.paid_at, to: paidAt }
+      }
+    }
+    if (statements.length === 0) throw new ApiError(400, '没有需要更正的字段')
+    await this.env.DB.batch(statements)
+    const updated = await this.env.DB.prepare('select * from credit_lot where id = ?').bind(lot.id).first<CreditLot>()
+    return { lot: updated, changed, balance: await getBalance(this.env, userId) }
   }
 
   /** 用户提交退款申请；不冻结积分，审核时按当时余额重算（符合“计费延迟”规则）。 */

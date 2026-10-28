@@ -8,6 +8,7 @@ Suxin 的统一账号、登录、积分与退款中心，部署在 **https://acc
 - 认证由 [Better Auth](https://www.better-auth.com/) 实现，OIDC 由 `@better-auth/oauth-provider` 提供
 - 支持邮箱 + 密码、GitHub / Google 第三方登录、邮箱验证与找回密码
 - 账号积分：余额、充值入口（跳转 EchoMind 充值页）、跨应用用量、退款申请、管理员审核与原路退款
+- 安全：登录/注册/找回密码等凭据接口按 IP 限流（D1 固定窗口）；管理员操作写入 `admin_audit`；每日对账余额与台账
 - 每个账号一个 Durable Object，串行化消费/退款，避免计费延迟下的并发退款
 - 登录态 Cookie 仅作用于 `account.ljhsu.xin`，不下发到父域
 

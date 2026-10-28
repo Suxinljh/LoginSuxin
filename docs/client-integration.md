@@ -231,6 +231,8 @@ Content-Type: application/json
 
 同一 `(appId, orderId)` 只入账一次；`paidAt` 是支付成功时间（毫秒）。管理员批量导入（`POST /api/admin/credits/import`）同样是只插入语义：重复订单不覆盖，若积分/剩余/金额/支付时间/归属账号与已有记录不一致，会在 `skipped` 里返回差异说明。
 
+导入后发现数据不对时，管理员可以调用 `POST /api/admin/credits/correct`（`{ userId, appId, orderId, remaining?, amountCents?, paidAt? }`）更正：`remaining` 的差额会写一条 `reason='adjust'` 的台账，保证余额与台账仍相等；不允许改 `credits` 与归属账号；账号有处理中的退款时返回 409。所有管理员操作（审核、导入、更正、对账）都会写入 `admin_audit`，可通过 `GET /api/admin/audit` 查看。
+
 5. 用户页面：`https://account.ljhsu.xin/credits`（余额、充值入口、用量）、`/refunds`、`/terms/refund`。应用只链接，不代理退款申请。充值只能由持有支付商户号的接入应用发起，所以 `/credits` 的充值按钮跳转到应用的充值页（目前为 `https://echomind.ljhsu.xin/?recharge=<积分>`），金额由应用按 1 积分 = ¥0.01 重算。
 6. 退款按**审核时**计算 12 个月与最终金额；一个账号同一时间一笔处理中退款（超过 14 天未审核自动失效，可重新提交）；超过 12 个月的支付宝订单转人工处理。
 7. 管理员在 `https://account.ljhsu.xin/admin/refunds` 审核（需要 `user.role='admin'`）：可按状态筛选、分页、展开订单级明细，顶部显示每日对账结果（`reconcile_report`），并支持「立即对账」。

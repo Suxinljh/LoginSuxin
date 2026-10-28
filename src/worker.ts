@@ -1,6 +1,7 @@
 import { verifyOAuthQueryParams } from '@better-auth/oauth-provider'
 import { createAuth } from './auth'
 import { REFUND_PENDING_TTL_MS, getBalance, getRefundEstimate } from './credits'
+import { allowRequest, cleanupRateLimit } from './rateLimit'
 import type { Env } from './env'
 
 export { AccountDO } from './accountDO'
@@ -36,6 +37,32 @@ function safeEqual(a: string, b: string): boolean {
   let diff = 0
   for (let index = 0; index < a.length; index += 1) diff |= a.charCodeAt(index) ^ b.charCodeAt(index)
   return diff === 0
+}
+
+/**
+ * 凭据类接口限流（按 IP）。只列出需要防着抄的 POST 接口，
+ * 不包含 `/api/auth/oauth2/token|userinfo|introspect`：那些是接入应用服务端的调用，
+ * 来源 IP 集中在 Cloudflare 出口，按 IP 限流会误伤正常登录。
+ */
+const AUTH_RATE_LIMITS: { path: string; limit: number; windowMs: number }[] = [
+  { path: '/api/auth/sign-in/email', limit: 15, windowMs: 10 * 60_000 },
+  { path: '/api/auth/sign-up/email', limit: 10, windowMs: 10 * 60_000 },
+  { path: '/api/auth/forget-password', limit: 5, windowMs: 10 * 60_000 },
+  { path: '/api/auth/reset-password', limit: 5, windowMs: 10 * 60_000 },
+  { path: '/api/auth/send-verification-email', limit: 5, windowMs: 10 * 60_000 },
+  { path: '/api/auth/change-email', limit: 5, windowMs: 10 * 60_000 },
+  { path: '/api/auth/delete-user', limit: 5, windowMs: 10 * 60_000 },
+]
+
+async function limitAuth(request: Request, env: Env, pathname: string): Promise<Response | null> {
+  const rule = AUTH_RATE_LIMITS.find(item => item.path === pathname)
+  if (!rule) return null
+  const client = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+  if (await allowRequest(env, 'auth', `${rule.path}:${client}`, rule.limit, rule.windowMs)) return null
+  return Response.json(
+    { error: '尝试过于频繁，请稍后再试' },
+    { status: 429, headers: { 'Cache-Control': 'no-store', 'Retry-After': '600' } },
+  )
 }
 
 function appKey(env: Env, appId: string): string {
@@ -288,6 +315,76 @@ async function handleAdminRefundDetail(request: Request, env: Env, id: string): 
   return json({ request: requestRow, items: items.results ?? [] })
 }
 
+type AuditEntry = { actor: string; action: string; target: string; detail?: unknown }
+
+/** 管理员操作审计：写失败不影响主流程，但会打日志。 */
+async function recordAudit(env: Env, entry: AuditEntry): Promise<void> {
+  try {
+    await env.DB.prepare('insert into admin_audit (id, actor, action, target, detail, created_at) values (?, ?, ?, ?, ?, ?)')
+      .bind(crypto.randomUUID(), entry.actor, entry.action, entry.target, JSON.stringify(entry.detail ?? null), Date.now())
+      .run()
+  } catch (error) {
+    console.error('[audit] 写入失败', entry.action, error)
+  }
+}
+
+async function handleAdminAudit(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'GET') return methodNotAllowed()
+  const user = await requireUser(request, env)
+  if (!isAdmin(env, request, user)) return json({ error: '无权限' }, 403)
+  const limit = Math.min(200, Math.max(1, Number(new URL(request.url).searchParams.get('limit')) || 50))
+  const rows = await env.DB.prepare('select * from admin_audit order by created_at desc limit ?').bind(limit).all<{
+    id: string
+    actor: string
+    action: string
+    target: string | null
+    detail: string | null
+    created_at: number
+  }>()
+  return json({
+    entries: (rows.results ?? []).map(row => ({
+      id: row.id,
+      actor: row.actor,
+      action: row.action,
+      target: row.target,
+      detail: (() => { try { return row.detail ? JSON.parse(row.detail) : null } catch { return null } })(),
+      createdAt: row.created_at,
+    })),
+  })
+}
+
+/** 存量订单更正（导入后发现 remaining / 金额 / 支付时间不对）。 */
+async function handleAdminCorrect(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'POST') return methodNotAllowed()
+  const user = await requireUser(request, env)
+  if (!isAdmin(env, request, user)) return json({ error: '无权限' }, 403)
+  if (!sameOrigin(request)) return json({ error: '跨站请求被拒绝' }, 403)
+  const body = await readJson(request)
+  if (!body) return json({ error: '请求体必须是 JSON' }, 400)
+  if (typeof body.userId !== 'string' || !body.userId) return json({ error: '缺少用户标识' }, 400)
+  if (typeof body.appId !== 'string' || !body.appId) return json({ error: '缺少应用标识' }, 400)
+  if (typeof body.orderId !== 'string' || !body.orderId) return json({ error: '缺少订单号' }, 400)
+  const actor = user?.email || 'admin-token'
+  const response = await accountOp(env, body.userId, {
+    op: 'correctLot',
+    appId: body.appId,
+    orderId: body.orderId,
+    remaining: body.remaining,
+    amountCents: body.amountCents,
+    paidAt: body.paidAt,
+  })
+  const data = await response.json().catch(() => null)
+  if (response.ok) {
+    await recordAudit(env, {
+      actor,
+      action: 'credits.correct',
+      target: `${body.appId}:${body.orderId}`,
+      detail: { userId: body.userId, changed: (data as { changed?: unknown } | null)?.changed },
+    })
+  }
+  return json(data ?? { error: '更正失败' }, response.status)
+}
+
 async function handleAdminReview(request: Request, env: Env, id: string): Promise<Response> {
   if (request.method !== 'POST') return methodNotAllowed()
   const user = await requireUser(request, env)
@@ -297,13 +394,25 @@ async function handleAdminReview(request: Request, env: Env, id: string): Promis
   if (!body) return json({ error: '请求体必须是 JSON' }, 400)
   const requestRow = await env.DB.prepare('select user_id from refund_request where id = ?').bind(id).first<{ user_id: string }>()
   if (!requestRow) return json({ error: '退款申请不存在' }, 404)
-  return accountOp(env, requestRow.user_id, {
+  const actor = user?.email || 'admin-token'
+  const response = await accountOp(env, requestRow.user_id, {
     op: 'review',
     refundId: id,
     action: body.action,
     note: body.note,
-    admin: user?.email || 'admin-token',
+    admin: actor,
   })
+  const data = await response.json().catch(() => null) as { request?: { status?: string; final_cents?: number }; error?: string } | null
+  if (response.ok) {
+    await recordAudit(env, {
+      actor,
+      action: body.action === 'reject' ? 'refund.reject' : 'refund.approve',
+      target: id,
+      detail: { userId: requestRow.user_id, status: data?.request?.status, finalCents: data?.request?.final_cents, note: body.note },
+    })
+    return json(data, response.status)
+  }
+  return json(data ?? { error: '审核失败' }, response.status)
 }
 
 type ReconcileResult = {
@@ -384,7 +493,14 @@ async function handleAdminReconcile(request: Request, env: Env): Promise<Respons
   if (!isAdmin(env, request, user)) return json({ error: '无权限' }, 403)
   if (request.method === 'POST') {
     if (!sameOrigin(request)) return json({ error: '跨站请求被拒绝' }, 403)
-    return json(await runReconcile(env, 'manual'))
+    const result = await runReconcile(env, 'manual')
+    await recordAudit(env, {
+      actor: user?.email || 'admin-token',
+      action: 'reconcile.run',
+      target: result.id,
+      detail: { usersChecked: result.usersChecked, mismatches: result.mismatches, expiredRefunds: result.expiredRefunds },
+    })
+    return json(result)
   }
   if (request.method !== 'GET') return methodNotAllowed()
   const row = await env.DB.prepare('select * from reconcile_report order by created_at desc limit 1').first<{
@@ -464,6 +580,12 @@ async function handleAdminImport(request: Request, env: Env): Promise<Response> 
       }
     }
   }
+  await recordAudit(env, {
+    actor: user?.email || 'admin-token',
+    action: 'credits.import',
+    target: appId,
+    detail: { users: groups.size, imported, duplicates, skipped: skipped.length, failed: failed.length },
+  })
   return json({ imported, duplicates, skipped, failed, users: groups.size, balances })
 }
 
@@ -572,6 +694,8 @@ export default {
 
     if (url.pathname === '/api/admin/refunds') return handleAdminRefunds(request, env)
     if (url.pathname === '/api/admin/reconcile') return handleAdminReconcile(request, env)
+    if (url.pathname === '/api/admin/audit') return handleAdminAudit(request, env)
+    if (url.pathname === '/api/admin/credits/correct') return handleAdminCorrect(request, env)
     if (url.pathname === '/api/admin/refunds/platform') return handleAdminPlatformRefund(request, env)
     if (url.pathname === '/api/admin/credits/import') return handleAdminImport(request, env)
     const reviewMatch = /^\/api\/admin\/refunds\/([^/]+)\/review$/.exec(url.pathname)
@@ -589,6 +713,11 @@ export default {
     }
 
     if (url.pathname.startsWith('/api/auth/')) {
+      // 凭据类接口按 IP 限流，避免在线猜密码/刷验证邮件；其余（OAuth token/userinfo 等）直通。
+      if (request.method === 'POST') {
+        const limited = await limitAuth(request, env, url.pathname)
+        if (limited) return limited
+      }
       // Better Auth 在 Workers 上需要按请求创建实例，不能放在模块顶层复用。
       return createAuth(env).handler(request)
     }
@@ -600,5 +729,6 @@ export default {
   /** Cron（每天）：主动失效超时退款申请 + 余额/台账对账。 */
   async scheduled(_event: ScheduledController, env: Env): Promise<void> {
     await runReconcile(env, 'cron')
+    await cleanupRateLimit(env)
   },
 } satisfies ExportedHandler<Env>
