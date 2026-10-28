@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router-dom'
-import { Account, Changelog, Consent, ForgotPassword, Home, NotFound, ResetPassword, SignIn, SignUp } from './pages'
+import { Account, AdminRefunds, Changelog, Consent, Credits, ForgotPassword, Home, NotFound, Refunds, ResetPassword, SignIn, SignUp } from './pages'
+import Legal from './Legal'
 
 export default function App() {
   return (
@@ -10,6 +11,10 @@ export default function App() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/account" element={<Account />} />
+      <Route path="/credits" element={<Credits />} />
+      <Route path="/refunds" element={<Refunds />} />
+      <Route path="/terms/refund" element={<Legal />} />
+      <Route path="/admin/refunds" element={<AdminRefunds />} />
       <Route path="/consent" element={<Consent />} />
       <Route path="/changelog" element={<Changelog />} />
       <Route path="*" element={<NotFound />} />

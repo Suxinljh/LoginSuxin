@@ -27,16 +27,19 @@ export function AuthShell({
   children,
   footer,
   wide = false,
+  wider = false,
 }: {
   title: string
   description?: string
   children: ReactNode
   footer?: ReactNode
   wide?: boolean
+  wider?: boolean
 }) {
+  const width = wider ? 'max-w-[860px]' : wide ? 'max-w-[520px]' : 'max-w-[420px]'
   return (
     <div className="auth-page flex min-h-dvh flex-col items-center justify-center gap-5 px-4 py-10">
-      <Card className={`w-full ${wide ? 'max-w-[520px]' : 'max-w-[420px]'} gap-0 p-7 sm:p-8`}>
+      <Card className={`w-full ${width} gap-0 p-7 sm:p-8`}>
         <Brand />
         <div className="mt-6 mb-6">
           <h1 className="text-[26px] leading-tight font-bold tracking-tight sm:text-[27px]">{title}</h1>
@@ -44,7 +47,7 @@ export function AuthShell({
         </div>
         {children}
       </Card>
-      <p className="text-center text-xs leading-relaxed text-muted">{footer ?? 'Suxin 统一账号 · login.ljhsu.xin'}</p>
+      <p className="text-center text-xs leading-relaxed text-muted">{footer ?? 'Suxin 统一账号 · account.ljhsu.xin'}</p>
     </div>
   )
 }

@@ -4,8 +4,8 @@ BETTER_AUTH_URL=http://localhost:5173
 BETTER_AUTH_SECRET=replace-with-openssl-rand-base64-32
 
 # 允许登录的来源，逗号分隔。
-# http://login.ljhsu.xin 是 wrangler dev 对自定义域名路由重写后的本地来源，不要删。
-TRUSTED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://login.ljhsu.xin
+# http://account.ljhsu.xin 是 wrangler dev 对自定义域名路由重写后的本地来源，不要删。
+TRUSTED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://account.ljhsu.xin
 
 # 本地开发可关闭邮箱验证；生产环境建议设为 true
 REQUIRE_EMAIL_VERIFICATION=false
@@ -17,4 +17,14 @@ GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 
 # 邮件发送（可选；留空时验证/重置链接会打印到 Worker 控制台）
-EMAIL_FROM=Suxin Login <login@mail.ljhsu.xin>
+EMAIL_FROM=Suxin Account <login@mail.ljhsu.xin>
+
+# 账号积分：应用服务端凭证（JSON）。本地可用测试 key；生产用 wrangler secret put APP_API_KEYS
+APP_API_KEYS={"echomind":"replace-with-app-key"}
+
+# 脚本导入/审核/平台原因退款令牌（可选；也可用 admin 角色会话）
+CREDITS_ADMIN_TOKEN=replace-with-admin-token
+
+# EchoMind 支付宝原路退款（可选；本地可指向本机 EchoMind，生产用 wrangler secret 覆盖）
+ECHOMIND_REFUND_URL=http://127.0.0.1:4174/api/pay/admin/refund
+ECHOMIND_PAY_ADMIN_TOKEN=replace-with-echomind-pay-admin-token
