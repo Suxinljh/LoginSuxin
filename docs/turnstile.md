@@ -68,9 +68,22 @@ providers: {"github":true,"google":true,"turnstile":"0x4AAAAAAA..."}
 
 想先看 UI 又不想建正式 widget 时，可以用官方测试 key（只用于本地/staging 联调）：
 
+| 用途 | site key | secret |
+| --- | --- | --- |
+| 永远通过 | `1x00000000000000000000AA` | `1x0000000000000000000000000000000AA` |
+| 永远失败 | `2x00000000000000000000AB` | `2x0000000000000000000000000000000AA` |
+| 强制交互 | `3x00000000000000000000FF` | `3x0000000000000000000000000000000AA` |
+
+注意 secret 是 **35 个字符**（`1x` + 30 个 0 + `AA`）。写成 32 位的相近串会被
+`siteverify` 判为 `invalid-input-secret`，表现就是「配了 secret 但所有 token 都校验失败」。
+
+**staging 目前就跑在「永远通过」测试 key 上**（看 UI 用）：`site key` 与 `secret` 都是
+以 `wrangler secret put` 写入的，不写进配置文件。换真实 widget 时用：
+
 ```bash
-# site key: 1x00000000000000000000AA（永远通过） / 2x00000000000000000000AB（永远挑战）
-# secret:   1x0000000000000000000000000000AA（永远通过） / 2x0000000000000000000000000000000AA（永远失败）
+printf '%s' '<真实 site key>' | pnpm exec wrangler secret put TURNSTILE_SITE_KEY -c wrangler.staging.jsonc
+pnpm exec wrangler secret put TURNSTILE_SECRET_KEY -c wrangler.staging.jsonc
+node scripts/check-turnstile.mjs https://staging.ljhsu.xin   # 期望：伪造 token 被拒
 ```
 
 ## 第三步：确认没问题后再开生产

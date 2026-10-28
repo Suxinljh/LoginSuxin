@@ -3,31 +3,42 @@
  * 检查某个账号中心环境的 Turnstile 配置是否按预期生效。
  *
  * 用法：node scripts/check-turnstile.mjs [https://staging.ljhsu.xin]
- * 依次检查：/api/providers 是否下发 site key、无 token 是否被拒、伪造 token 是否被拒。
+ * 依次检查：/api/providers 是否下发 site key、无 token 是否被拒、伪造 token 的结果。
  */
 const base = (process.argv[2] || 'https://staging.ljhsu.xin').replace(/\/$/, '')
-const origin = base
 
-const post = (path, headers = {}) =>
-  fetch(base + path, {
+const post = async (headers = {}) => {
+  const response = await fetch(`${base}/api/auth/sign-in/email`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', origin, ...headers },
+    headers: { 'content-type': 'application/json', origin: base, ...headers },
     body: JSON.stringify({ email: 'turnstile-check@example.com', password: 'not-a-real-password' }),
   })
+  const text = await response.text()
+  return { status: response.status, text }
+}
 
-const providers = await fetch(base + '/api/providers').then(r => r.json()).catch(() => null)
+const providers = await fetch(`${base}/api/providers`).then(r => r.json()).catch(() => null)
 const siteKey = providers?.turnstile ?? null
 console.log('providers:', JSON.stringify(providers))
-console.log(siteKey ? `site key 已下发：${siteKey}` : '未启用 Turnstile（前端不渲染 widget，登录不校验）')
 
-const noToken = await post('/api/auth/sign-in/email')
-console.log('无 token 提交:', noToken.status, (await noToken.text()).slice(0, 120))
+if (!siteKey) {
+  console.log('未启用 Turnstile：前端不渲染 widget，服务端也不校验（登录流程与未接入时一致）')
+  const plain = await post()
+  console.log('无 token 提交:', plain.status, plain.text.slice(0, 120))
+  console.log(plain.status === 429 ? '\n结论：被登录限流拦下，稍后再试' : '\n结论：符合“未启用”预期')
+  process.exit(0)
+}
 
-const badToken = await post('/api/auth/sign-in/email', { 'x-turnstile-token': 'XXXX.DUMMY.TOKEN.XXXX' })
-console.log('伪造 token 提交:', badToken.status, (await badToken.text()).slice(0, 120))
+console.log(`site key 已下发：${siteKey}`)
+const noToken = await post()
+console.log('无 token 提交:', noToken.status, noToken.text.slice(0, 120))
+const dummy = await post({ 'x-turnstile-token': 'XXXX.DUMMY.TOKEN.XXXX' })
+console.log('伪造 token 提交:', dummy.status, dummy.text.slice(0, 120))
 
-const expectedReject = ['400', '403']
-const ok = siteKey
-  ? expectedReject.includes(String(noToken.status)) && expectedReject.includes(String(badToken.status))
-  : noToken.status !== 429 && String(noToken.status).startsWith('4')
-console.log(ok ? '\n结论：配置符合预期' : '\n结论：与预期不符，请检查 TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY')
+const noTokenBlocked = noToken.status === 400 && noToken.text.includes('人机验证')
+const dummyRejected = dummy.status === 400 && dummy.text.includes('人机验证')
+const dummyAccepted = dummy.status === 401 || dummy.status === 200
+if (!noTokenBlocked) console.log('\n✗ 无 token 没有被拒：检查是否配置了 SECRET、以及请求是否带 Origin')
+else if (dummyRejected) console.log('\n结论：校验生效且拒绝伪造 token')
+else if (dummyAccepted) console.log('\n结论：校验生效；伪造 token 被放行说明用的是官方 always-pass 测试 secret')
+else console.log('\n结论：结果与预期不同，请检查 secret 与 site key 是否属于同一个 widget')
