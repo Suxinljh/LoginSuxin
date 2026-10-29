@@ -691,6 +691,8 @@ export function Credits() {
   const [info, setInfo] = useState<CreditsInfo | null>(null)
   const [error, setError] = useState('')
   const [customCredits, setCustomCredits] = useState('')
+  // 充值与最近用量分成两个 tab：用量会越积越长，摊在页面下方会把充值挤走。
+  const [tab, setTab] = useState<'recharge' | 'usage'>('recharge')
   const navigate = useNavigate()
   const customValue = Number(customCredits.trim())
   const customValid = customCredits.trim() !== '' && Number.isSafeInteger(customValue) && customValue >= MIN_CUSTOM_CREDITS && customValue <= MAX_CUSTOM_CREDITS
@@ -734,9 +736,31 @@ export function Credits() {
               <Button variant="secondary" fullWidth onPress={() => navigate('/refunds')}>申请退款</Button>
               <Button variant="outline" fullWidth onPress={() => navigate('/terms/refund')}>服务协议与政策</Button>
             </div>
-            <section className="rounded-xl border border-border bg-surface-secondary p-4">
-              <h2 className="text-sm font-semibold">充值</h2>
-              <p className="mt-1 text-xs leading-relaxed text-muted">
+            <div role="tablist" aria-label="积分管理" className="flex gap-1 rounded-xl border border-border bg-surface-secondary p-1">
+              {([['recharge', '充值'], ['usage', '最近用量']] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  id={`credits-tab-${id}`}
+                  aria-selected={tab === id}
+                  aria-controls={`credits-panel-${id}`}
+                  className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-medium transition ${tab === id ? 'bg-surface text-foreground shadow-sm' : 'text-muted hover:text-foreground'}`}
+                  onClick={() => setTab(id)}
+                  onKeyDown={event => {
+                    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+                    event.preventDefault()
+                    const next = id === 'recharge' ? 'usage' : 'recharge'
+                    setTab(next)
+                    document.getElementById(`credits-tab-${next}`)?.focus()
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <section role="tabpanel" id="credits-panel-recharge" aria-labelledby="credits-tab-recharge" hidden={tab !== 'recharge'} className="rounded-xl border border-border bg-surface-secondary p-4">
+              <p className="text-xs leading-relaxed text-muted">
                 1 积分 = ¥0.01。积分进入本账号后可在所有已接入的应用使用；充值由 {RECHARGE_APP.name} 的支付宝商户号收款，支付成功后自动入账。
               </p>
               <div className="mt-3 grid grid-cols-3 gap-2">
@@ -769,16 +793,18 @@ export function Credits() {
                 最低 {MIN_CUSTOM_CREDITS} 积分（{money(MIN_CUSTOM_CREDITS)}），最高 {MAX_CUSTOM_CREDITS.toLocaleString('zh-CN')} 积分（{money(MAX_CUSTOM_CREDITS)}），金额按积分动态计算。跳转后会打开 {RECHARGE_APP.name} 的充值页，未登录时需先用同一个 Suxin 账号登录。
               </p>
             </section>
-            <section className="rounded-xl border border-border bg-surface-secondary p-4">
-              <h2 className="mb-2 text-sm font-semibold">最近用量</h2>
+            <section role="tabpanel" id="credits-panel-usage" aria-labelledby="credits-tab-usage" hidden={tab !== 'usage'} className="rounded-xl border border-border bg-surface-secondary p-4">
               {info.usage.length === 0 ? <p className="text-sm text-muted">暂无用量记录。</p> : (
-                <div className="grid gap-2">
-                  {info.usage.map(row => (
-                    <div key={row.id} className="flex items-center justify-between gap-3 border-b border-separator pb-2 text-sm last:border-b-0 last:pb-0">
-                      <div><strong>{LEDGER_REASON[row.reason] || row.reason}</strong><small className="ml-2 text-xs text-muted">{row.app_id || '账号'}</small></div>
-                      <div className="text-right"><span className="font-medium">{row.delta > 0 ? `+${row.delta}` : row.delta}</span><small className="ml-2 text-xs text-muted">{shortDate(row.created_at)}</small></div>
-                    </div>
-                  ))}
+                <div>
+                  <p className="mb-2 text-xs text-muted">{info.usage.length >= 20 ? '仅显示最近 20 条，按时间倒序' : '按时间倒序'}</p>
+                  <div className="grid max-h-80 gap-2 overflow-y-auto pr-1">
+                    {info.usage.map(row => (
+                      <div key={row.id} className="flex items-center justify-between gap-3 border-b border-separator pb-2 text-sm last:border-b-0 last:pb-0">
+                        <div><strong>{LEDGER_REASON[row.reason] || row.reason}</strong><small className="ml-2 text-xs text-muted">{row.app_id || '账号'}</small></div>
+                        <div className="text-right"><span className="font-medium">{row.delta > 0 ? `+${row.delta}` : row.delta}</span><small className="ml-2 text-xs text-muted">{shortDate(row.created_at)}</small></div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </section>
