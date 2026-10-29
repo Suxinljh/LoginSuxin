@@ -63,7 +63,7 @@ pnpm dev                # 同时启动 wrangler dev (:8787) 和 Vite (:5173)
 ### 环境与可选能力
 
 - **staging**：`https://staging.ljhsu.xin`（Worker `login-suxin-staging`，独立 D1），用 `pnpm deploy:staging` / `pnpm db:migrate:staging` 部署与迁移，详见 `docs/staging.md`。
-- **Turnstile 人机验证（可选）**：同时配置 `TURNSTILE_SITE_KEY`（vars）与 `TURNSTILE_SECRET_KEY`（secret）后，登录、注册、找回密码表单会渲染 widget 并在服务端用 `siteverify` 校验；未配置时流程完全不变。开关步骤、校验脚本、回滚与排查见 `docs/turnstile.md`（`node scripts/check-turnstile.mjs <url>` 可一键检查某环境是否按预期生效）。
+- **Turnstile 人机验证（可选）**：同时配置 `TURNSTILE_SITE_KEY`（vars）与 `TURNSTILE_SECRET_KEY`（secret）后启用。widget 平时不显示，用户点“登录 / 创建账号 / 发送重置邮件 / GitHub / Google”时才跑挑战，服务端先调 `siteverify` 再交给 Better Auth；未配置时流程完全不变。开关步骤、校验脚本、回滚与排查见 `docs/turnstile.md`（`node scripts/check-turnstile.mjs <url>` 可一键检查某环境是否按预期生效）。
 - **登录限流**：`sign-in` 15 次/10 分钟、`sign-up` 10 次、`forget-password` / `reset-password` / `change-email` 等 5 次，按 IP 用 D1 固定窗口计数；OAuth `token`/`userinfo` 等服务端调用不限流。
 
 ### 把账号设为管理员

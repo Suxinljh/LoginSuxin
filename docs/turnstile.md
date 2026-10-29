@@ -2,8 +2,10 @@
 
 Turnstile 是 Cloudflare 的人机验证，用来挡撞库、批量注册和刷找回密码邮件。代码已经接好，**默认关闭**：只有 `TURNSTILE_SITE_KEY`（vars）和 `TURNSTILE_SECRET_KEY`（secret）同时存在才启用。
 
-- 保护范围：`/api/auth/sign-in/email`、`/api/auth/sign-up/email`、`/api/auth/forget-password`（前端三个表单各渲染一个 widget）。
-- **不**保护：`send-verification-email`（在 `/account` 页没有 widget，那条只靠按 IP 限流）、OAuth `token`/`userinfo`（服务端调用）、社交登录按钮（走提供商 OAuth）。
+- 保护范围：`/api/auth/sign-in/email`、`/api/auth/sign-in/social`（GitHub/Google）、`/api/auth/sign-up/email`、`/api/auth/forget-password`。
+- **不**保护：`send-verification-email`（在 `/account` 页没有 widget，那条只靠按 IP 限流）、OAuth `token`/`userinfo`（服务端调用）、第三方回调 `/api/auth/callback/*`（用户已在提供商那边完成身份验证）。
+- 前端行为：widget 平时**不可见**（`appearance: 'interaction-only'` + `execution: 'execute'`），只有用户点“登录 / 创建账号 / 发送重置邮件 / GitHub / Google”时才跑挑战；需要点击验证时才会就地展开，不需要就自动通过。
+- 为什么不在“密码验证完”之后再验证：Turnstile 必须在校验密码之前完成，否则机器人可以先免费试一次密码（还能借此枚举账号），再多一步“半登录”状态反而更复杂。放在提交时校验，用户看到的仍然是“平时没有 widget”。
 - 校验顺序：按 IP 限流 → Turnstile 校验 → 交给 Better Auth。所以被 Turnstile 拒掉的请求不会消耗密码尝试额度，也不会写登录失败。
 - 容错：`siteverify` 自身超时/网络错误时**放行并打日志**（避免 Cloudflare 故障导致整站无法登录），此时仍有登录限流兜底；只有 `success:false` 才拒绝。
 
@@ -60,11 +62,12 @@ providers: {"github":true,"google":true,"turnstile":"0x4AAAAAAA..."}
 
 再用浏览器过一遍（staging）：
 
-1. `https://staging.ljhsu.xin/sign-in` 表单上方出现 widget；
-2. 不完成验证直接点“登录” → 提示「请先完成人机验证。」，不发请求；
-3. 完成验证 + 正确密码 → 正常登录；验证 token 是一次性的，失败后再提交会换新 widget；
+1. `https://staging.ljhsu.xin/sign-in` 打开时**看不到** widget（这是正常的：`execution: 'execute'`）；
+2. 点“登录” → 按钮转圈期间跑挑战（需要交互时才就地展开勾选），验证通过后才发出登录请求；
+   密码错误会提示并重新挂一个 widget，下一次提交拿新 token；
+3. 点 GitHub / Google → 同样先跑挑战再跳转授权页（这两个按钮受 `/api/auth/sign-in/social` 保护）；
 4. `sign-up`、`forgot-password` 同样检查；
-5. 手机/无痕窗口各试一次（主题、窄屏下 widget 应自适应）。
+5. 手机/无痕窗口各试一次（窄屏下挑战框应自适应）。
 
 想先看 UI 又不想建正式 widget 时，可以用官方测试 key（只用于本地/staging 联调）：
 
@@ -105,7 +108,7 @@ node scripts/check-turnstile.mjs https://staging.ljhsu.xin   # 期望：伪造 t
 
 - 管理员/普通账号各登录一次；
 - 用 `pnpm tail:staging` 或生产 `wrangler tail login-suxin` 看有没有 `[turnstile] 校验未通过` 的异常量（正常应该只有机器人）；
-- `/credits`、`/refunds`、OAuth 返回登录不受影响（它们不走这三个表单）。
+- `/credits`、`/refunds`、OAuth 回调登录不受影响（它们不走这些受保护接口）。
 
 ## 回滚
 
@@ -126,8 +129,10 @@ pnpm exec wrangler secret delete TURNSTILE_SECRET_KEY
 
 | 现象 | 原因 |
 | --- | --- |
-| 页面没有 widget | `/api/providers` 的 `turnstile` 是 null：两个 key 没配齐，或改了 vars 没重新 deploy |
-| 有 widget 但一提交就 400「请先完成人机验证」 | token 没带上：检查是否走了这三个受保护接口之一（社交登录不经过它们） |
+| 页面看不到 widget | 正常：widget 是 `execution: 'execute'`，只在点提交/社交登录时跑。若 `/api/providers` 的 `turnstile` 是 null，才是两个 key 没配齐或改了 vars 没重新 deploy |
+| 点登录后提示「人机验证未完成…」 | 挑战没拿到 token：`challenges.cloudflare.com` 被扩展/网络拦截，或 widget 域名单里没有当前域名（面板会显示 `110200`） |
+| 一提交就 400「请先完成人机验证」 | token 没带上：检查是否走了受保护接口之一（`sign-in/email`、`sign-in/social`、`sign-up/email`、`forget-password`） |
+| 社交登录跳过了验证 | 用旧的前端缓存（带 hash 的文件会随部署更新）；确认 `/api/auth/sign-in/social` 已在保护列表里 |
 | 一直 400「人机验证未通过」 | secret 与 site key 不是同一个 widget；或 widget 域名单里没有当前域名 |
 | 日志里大量 `[turnstile] 校验服务不可用` | `siteverify` 请求异常（网络/超时），此时按放行处理，属预期降级 |
 | 老用户被频繁挑战 | widget 模式太严格（改 Managed）或 IP 信誉差；Turnstile 面板可看 challenge 比例 |

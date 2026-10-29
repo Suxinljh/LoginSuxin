@@ -7,10 +7,11 @@ import type { Env } from './env'
  * 校验通过与否只看 `siteverify` 的 `success`；校验服务本身不可用（超时/网络错误）
  * 时放行并打日志，避免整站登录被外部依赖拖死，此时仍有按 IP 的登录限流兜底。
  */
-// 只保护密码/注册/忘记密码三个表单；`send-verification-email` 留在 /account 页，
-// 没有 widget 时会被直接拒掉，所以它只靠按 IP 限流。
+// 密码/注册/找回密码三个表单，以及社交登录（GitHub/Google）的发起接口。
+// `send-verification-email` 留在 /account 页，那里没有 widget，所以它只靠按 IP 限流。
 export const TURNSTILE_PROTECTED_PATHS = new Set([
   '/api/auth/sign-in/email',
+  '/api/auth/sign-in/social',
   '/api/auth/sign-up/email',
   '/api/auth/forget-password',
 ])

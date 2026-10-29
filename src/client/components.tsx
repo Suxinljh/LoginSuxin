@@ -127,7 +127,13 @@ export function Divider() {
   )
 }
 
-export function SocialButtons({ onError }: { onError: (message: string) => void }) {
+export function SocialButtons({ onError, challenge, onChallenged }: {
+  onError: (message: string) => void
+  /** 启用 Turnstile 时由页面传入：点社交登录先跑一次人机验证拿 token。 */
+  challenge?: () => Promise<string>
+  /** token 已用掉或校验失败时通知页面重置 widget。 */
+  onChallenged?: () => void
+}) {
   const [loading, setLoading] = useState<'github' | 'google' | null>(null)
   const [providers, setProviders] = useState<{ github: boolean; google: boolean } | null>(null)
 
@@ -146,15 +152,27 @@ export function SocialButtons({ onError }: { onError: (message: string) => void 
     setLoading(provider)
     onError('')
     try {
-      const { data, error } = await authClient.signIn.social({ provider })
+      const token = challenge ? await challenge() : ''
+      if (challenge && !token) {
+        onError(TURNSTILE_FAILED)
+        onChallenged?.()
+        setLoading(null)
+        return
+      }
+      const { data, error } = await authClient.signIn.social({
+        provider,
+        fetchOptions: token ? { headers: { 'x-turnstile-token': token } } : undefined,
+      })
       if (error) {
         onError(errorText(error))
+        onChallenged?.()
         setLoading(null)
         return
       }
       if (data?.url) window.location.href = data.url
     } catch (error) {
       onError(errorText(error))
+      onChallenged?.()
       setLoading(null)
     }
   }
@@ -185,6 +203,8 @@ export function SocialButtons({ onError }: { onError: (message: string) => void 
 type TurnstileApi = {
   render: (element: HTMLElement, options: Record<string, unknown>) => string
   remove: (id?: string) => void
+  execute: (id?: string) => void
+  reset: (id?: string) => void
 }
 
 const TURNSTILE_SCRIPT = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
@@ -225,28 +245,90 @@ export function useTurnstileSiteKey(): string | null {
   return siteKey
 }
 
-export function TurnstileWidget({ siteKey, onToken }: { siteKey: string | null; onToken: (token: string) => void }) {
+/** 提交前调用：跑一次人机验证，拿到一次性 token；未启用或拿不到时返回空串。 */
+export type TurnstileExecutor = () => Promise<string>
+
+/** 人机验证没拿到 token（被扩展拦截、超时、或挑战失败）时统一的提示。 */
+export const TURNSTILE_FAILED = '人机验证未完成，请重试；若一直失败，请检查浏览器是否拦截了 challenges.cloudflare.com。'
+
+/**
+ * 隐形 widget：页面加载时不显示，`execution: 'execute'` 保证只有调用 execute 时才跑挑战，
+ * `appearance: 'interaction-only'` 让需要用户点击时才展开，平时完全不可见。
+ * 用 `onReady` 把执行函数交给页面，密码提交与社交登录共用同一个 widget。
+ */
+export function TurnstileWidget({ siteKey, onReady }: { siteKey: string | null; onReady: (execute: TurnstileExecutor) => void }) {
   const container = useRef<HTMLDivElement | null>(null)
-  const callback = useRef(onToken)
-  useEffect(() => { callback.current = onToken }, [onToken])
+  const ready = useRef(onReady)
+  useEffect(() => { ready.current = onReady }, [onReady])
 
   useEffect(() => {
-    if (!siteKey || !container.current) return
-    let widgetId: string | undefined
+    if (!siteKey) {
+      ready.current(async () => '')
+      return
+    }
+    const element = container.current
+    if (!element) return
+
     let cancelled = false
+    let widgetId: string | undefined
+    let issued = false
+    let pending: ((token: string) => void) | null = null
+    let markRendered: (() => void) | null = null
+    const rendered = new Promise<void>(resolve => { markRendered = resolve })
+
+    const settle = (token: string) => {
+      const resolve = pending
+      pending = null
+      resolve?.(token)
+    }
+
+    // 先给出执行函数：用户可能在 widget 渲染完成前就点了提交，这时等渲染而不是直接失败。
+    ready.current(() => new Promise<string>(resolve => {
+      void Promise.race([rendered, new Promise<void>(wait => window.setTimeout(wait, 5_000))]).then(() => {
+        const turnstile = (window as { turnstile?: TurnstileApi }).turnstile
+        if (cancelled || !widgetId || !turnstile) { resolve(''); return }
+        // 加载被拦截或挑战迟迟没有回调时，不让按钮一直转圈。
+        const timer = window.setTimeout(() => {
+          if (pending === done) pending = null
+          resolve('')
+        }, 12_000)
+        const done = (token: string) => {
+          window.clearTimeout(timer)
+          resolve(token)
+        }
+        pending = done
+        try {
+          // token 一次性：上一轮已经发过 token，先复位再执行，保证每次提交都拿新的。
+          if (issued) { turnstile.reset(widgetId); issued = false }
+          turnstile.execute(widgetId)
+        } catch {
+          if (pending === done) pending = null
+          window.clearTimeout(timer)
+          resolve('')
+        }
+      })
+    }))
+
     void loadTurnstile().then(api => {
-      if (!api || cancelled || !container.current) return
-      widgetId = api.render(container.current, {
+      if (!api || cancelled || !element) { markRendered?.(); return }
+      widgetId = api.render(element, {
         sitekey: siteKey,
         theme: 'auto',
         size: 'flexible',
-        callback: (token: string) => callback.current(token),
-        'expired-callback': () => callback.current(''),
-        'error-callback': () => callback.current(''),
+        // 平时不占位、不显示；只有确实需要交互时才就地展开。
+        appearance: 'interaction-only',
+        execution: 'execute',
+        callback: (token: string) => { issued = true; settle(token) },
+        'expired-callback': () => { issued = false; settle('') },
+        'error-callback': () => { issued = false; settle('') },
+        'timeout-callback': () => { issued = false; settle('') },
       })
+      markRendered?.()
     })
+
     return () => {
       cancelled = true
+      pending = null
       if (widgetId) (window as { turnstile?: TurnstileApi }).turnstile?.remove(widgetId)
     }
   }, [siteKey])
