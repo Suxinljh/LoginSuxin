@@ -36,6 +36,8 @@ export function SignIn() {
   const turnstile = useRef<TurnstileExecutor>(async () => '')
   const [turnstileNonce, setTurnstileNonce] = useState(0)
   const [agreed, setAgreed] = useState(false)
+  // 连点/回车重复提交：state 更新是异步的，用 ref 同步挡住第二个请求。
+  const busy = useRef(false)
   const resetTurnstile = () => setTurnstileNonce(value => value + 1)
   /** 未勾选同意条款时不发请求，只提示。 */
   const consentOk = () => {
@@ -54,30 +56,36 @@ export function SignIn() {
 
   async function submit(event: FormEvent) {
     event.preventDefault()
+    if (busy.current) return
     setError('')
     if (!consentOk()) return
+    busy.current = true
     setLoading(true)
-    const turnstileToken = await requestTurnstileToken()
-    // 只有启用了 Turnstile 才要求 token；未启用时是空串，不能因此拦住登录。
-    if (siteKey && !turnstileToken) {
+    try {
+      const turnstileToken = await requestTurnstileToken()
+      // 只有启用了 Turnstile 才要求 token；未启用时是空串，不能因此拦住登录。
+      if (siteKey && !turnstileToken) {
+        // 不重挂 widget：挑战可能还在进行，重挂会让用户再验证一遍。
+        setLoading(false)
+        return
+      }
+      const { error } = await authClient.signIn.email({
+        email,
+        password,
+        fetchOptions: turnstileToken ? { headers: { 'x-turnstile-token': turnstileToken } } : undefined,
+      })
       setLoading(false)
-      resetTurnstile()
-      return
+      if (error) {
+        setError(errorText(error))
+        // 验证 token 一次性，失败后必须换新的 widget。
+        resetTurnstile()
+        return
+      }
+      // OAuth 流程由 oauthProviderClient 自动继续；普通登录回到账户页。
+      if (!oauthFlow) navigate('/account', { replace: true })
+    } finally {
+      busy.current = false
     }
-    const { error } = await authClient.signIn.email({
-      email,
-      password,
-      fetchOptions: turnstileToken ? { headers: { 'x-turnstile-token': turnstileToken } } : undefined,
-    })
-    setLoading(false)
-    if (error) {
-      setError(errorText(error))
-      // 验证 token 一次性，失败后必须换新的 widget。
-      resetTurnstile()
-      return
-    }
-    // OAuth 流程由 oauthProviderClient 自动继续；普通登录回到账户页。
-    if (!oauthFlow) navigate('/account', { replace: true })
   }
 
   return (
@@ -120,6 +128,7 @@ export function SignUp() {
   const turnstile = useRef<TurnstileExecutor>(async () => '')
   const [turnstileNonce, setTurnstileNonce] = useState(0)
   const [agreed, setAgreed] = useState(false)
+  const busy = useRef(false)
   const resetTurnstile = () => setTurnstileNonce(value => value + 1)
   const consentOk = () => {
     if (agreed) return true
@@ -136,35 +145,41 @@ export function SignUp() {
 
   async function submit(event: FormEvent) {
     event.preventDefault()
+    if (busy.current) return
     setError('')
     if (password !== confirm) {
       setError('两次输入的密码不一致。')
       return
     }
     if (!consentOk()) return
+    busy.current = true
     setLoading(true)
-    const turnstileToken = await requestTurnstileToken()
-    if (siteKey && !turnstileToken) {
+    try {
+      const turnstileToken = await requestTurnstileToken()
+      if (siteKey && !turnstileToken) {
+        // 不重挂 widget：挑战可能还在进行，重挂会让用户再验证一遍。
+        setLoading(false)
+        return
+      }
+      const { error } = await authClient.signUp.email({
+        email,
+        password,
+        name,
+        fetchOptions: turnstileToken ? { headers: { 'x-turnstile-token': turnstileToken } } : undefined,
+      })
       setLoading(false)
-      resetTurnstile()
-      return
-    }
-    const { error } = await authClient.signUp.email({
-      email,
-      password,
-      name,
-      fetchOptions: turnstileToken ? { headers: { 'x-turnstile-token': turnstileToken } } : undefined,
-    })
-    setLoading(false)
-    if (error) {
-      setError(errorText(error))
-      resetTurnstile()
-      return
-    }
-    setDone(true)
-    if (!oauthFlow) {
-      const session = await authClient.getSession()
-      if (session.data) navigate('/account', { replace: true })
+      if (error) {
+        setError(errorText(error))
+        resetTurnstile()
+        return
+      }
+      setDone(true)
+      if (!oauthFlow) {
+        const session = await authClient.getSession()
+        if (session.data) navigate('/account', { replace: true })
+      }
+    } finally {
+      busy.current = false
     }
   }
 
@@ -210,34 +225,41 @@ export function ForgotPassword() {
   const siteKey = useTurnstileSiteKey()
   const turnstile = useRef<TurnstileExecutor>(async () => '')
   const [turnstileNonce, setTurnstileNonce] = useState(0)
+  const busy = useRef(false)
   const resetTurnstile = () => setTurnstileNonce(value => value + 1)
 
   async function submit(event: FormEvent) {
     event.preventDefault()
+    if (busy.current) return
     setError('')
+    busy.current = true
     setLoading(true)
-    let turnstileToken = ''
-    if (siteKey) {
-      turnstileToken = await turnstile.current()
-      if (!turnstileToken) {
-        setError(TURNSTILE_FAILED)
-        setLoading(false)
+    try {
+      let turnstileToken = ''
+      if (siteKey) {
+        turnstileToken = await turnstile.current()
+        if (!turnstileToken) {
+          // 同上：保留 widget，用户补完验证后再点一次即可，不需要重新挑战。
+          setError(TURNSTILE_FAILED)
+          setLoading(false)
+          return
+        }
+      }
+      const { error } = await authClient.requestPasswordReset({
+        email,
+        redirectTo: `${window.location.origin}/reset-password`,
+        fetchOptions: turnstileToken ? { headers: { 'x-turnstile-token': turnstileToken } } : undefined,
+      })
+      setLoading(false)
+      if (error) {
+        setError(errorText(error))
         resetTurnstile()
         return
       }
+      setSent(true)
+    } finally {
+      busy.current = false
     }
-    const { error } = await authClient.requestPasswordReset({
-      email,
-      redirectTo: `${window.location.origin}/reset-password`,
-      fetchOptions: turnstileToken ? { headers: { 'x-turnstile-token': turnstileToken } } : undefined,
-    })
-    setLoading(false)
-    if (error) {
-      setError(errorText(error))
-      resetTurnstile()
-      return
-    }
-    setSent(true)
   }
 
   if (sent) {

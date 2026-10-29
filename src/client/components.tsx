@@ -138,6 +138,7 @@ export function SocialButtons({ onError, challenge, onChallenged, guard }: {
 }) {
   const [loading, setLoading] = useState<'github' | 'google' | null>(null)
   const [providers, setProviders] = useState<{ github: boolean; google: boolean } | null>(null)
+  const busy = useRef(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -151,7 +152,10 @@ export function SocialButtons({ onError, challenge, onChallenged, guard }: {
   }, [])
 
   async function signIn(provider: 'github' | 'google') {
+    // 连点两下不要各发一次请求（state 更新是异步的，用 ref 同步挡住）。
+    if (busy.current) return
     if (guard && !guard()) return
+    busy.current = true
     setLoading(provider)
     onError('')
     try {
@@ -177,6 +181,8 @@ export function SocialButtons({ onError, challenge, onChallenged, guard }: {
       onError(errorText(error))
       onChallenged?.()
       setLoading(null)
+    } finally {
+      busy.current = false
     }
   }
 
@@ -274,43 +280,62 @@ export function TurnstileWidget({ siteKey, onReady }: { siteKey: string | null; 
 
     let cancelled = false
     let widgetId: string | undefined
-    let issued = false
+    // 正在进行的挑战：要么由 Turnstile 回调结束，要么因脚本被拦截立即返回空串。
+    // 同一时间只允许一个，连点两次登录/社交按钮不会各起一个挑战、互相作废。
+    let challenge: Promise<string> | null = null
     let pending: ((token: string) => void) | null = null
+    // 已拿到但还没被用掉的 token：用户完成验证需要时间，等超时后才到的 token 也留着，
+    // 下次点击直接复用，不再弹第二遍验证。
+    let cachedToken = ''
+    let cachedAt = 0
+    // 这个 widget 自上次 reset 后是否已经发过 token；发过就得先 reset 才能再挑战。
+    let solved = false
     let markRendered: (() => void) | null = null
     const rendered = new Promise<void>(resolve => { markRendered = resolve })
 
-    const settle = (token: string) => {
-      const resolve = pending
-      pending = null
-      resolve?.(token)
+    const startChallenge = (): Promise<string> => {
+      if (challenge) return challenge
+      challenge = new Promise<string>(resolve => {
+        void Promise.race([rendered, new Promise<void>(wait => window.setTimeout(wait, 5_000))]).then(() => {
+          const turnstile = (window as { turnstile?: TurnstileApi }).turnstile
+          if (cancelled || !widgetId || !turnstile) { resolve(''); return }
+          pending = (token: string) => {
+            challenge = null
+            if (token) {
+              cachedToken = token
+              cachedAt = Date.now()
+            }
+            resolve(token)
+          }
+          try {
+            if (solved) { turnstile.reset(widgetId); solved = false }
+            turnstile.execute(widgetId)
+          } catch {
+            challenge = null
+            pending = null
+            resolve('')
+          }
+        })
+      })
+      return challenge
     }
 
     // 先给出执行函数：用户可能在 widget 渲染完成前就点了提交，这时等渲染而不是直接失败。
-    ready.current(() => new Promise<string>(resolve => {
-      void Promise.race([rendered, new Promise<void>(wait => window.setTimeout(wait, 5_000))]).then(() => {
-        const turnstile = (window as { turnstile?: TurnstileApi }).turnstile
-        if (cancelled || !widgetId || !turnstile) { resolve(''); return }
-        // 加载被拦截或挑战迟迟没有回调时，不让按钮一直转圈。
-        const timer = window.setTimeout(() => {
-          if (pending === done) pending = null
-          resolve('')
-        }, 12_000)
-        const done = (token: string) => {
-          window.clearTimeout(timer)
-          resolve(token)
-        }
-        pending = done
-        try {
-          // token 一次性：上一轮已经发过 token，先复位再执行，保证每次提交都拿新的。
-          if (issued) { turnstile.reset(widgetId); issued = false }
-          turnstile.execute(widgetId)
-        } catch {
-          if (pending === done) pending = null
-          window.clearTimeout(timer)
-          resolve('')
-        }
-      })
-    }))
+    ready.current(async () => {
+      // 上一轮已经拿到 token（只是当时等超时了）就直接用，避免让用户再验证一遍。
+      if (cachedToken && Date.now() - cachedAt < 240_000) {
+        const token = cachedToken
+        cachedToken = ''
+        return token
+      }
+      // 兜底：脚本正常但回调一直不来时不要无限转圈；挑战本身继续跑，完成后的 token 会进缓存。
+      const TIMEOUT = Symbol('timeout')
+      const result = await Promise.race([
+        startChallenge(),
+        new Promise<typeof TIMEOUT>(wait => window.setTimeout(() => wait(TIMEOUT), 45_000)),
+      ])
+      return result === TIMEOUT ? '' : result
+    })
 
     void loadTurnstile().then(api => {
       if (!api || cancelled || !element) { markRendered?.(); return }
@@ -321,17 +346,21 @@ export function TurnstileWidget({ siteKey, onReady }: { siteKey: string | null; 
         // 平时不占位、不显示；只有确实需要交互时才就地展开。
         appearance: 'interaction-only',
         execution: 'execute',
-        callback: (token: string) => { issued = true; settle(token) },
-        'expired-callback': () => { issued = false; settle('') },
-        'error-callback': () => { issued = false; settle('') },
-        'timeout-callback': () => { issued = false; settle('') },
+        callback: (token: string) => { solved = true; pending?.(token) },
+        // token 过期/失败后不能再用，丢掉缓存也不让执行函数直接返回旧值。
+        'expired-callback': () => { solved = false; cachedToken = ''; cachedAt = 0; pending?.('') },
+        'error-callback': () => { solved = false; cachedToken = ''; cachedAt = 0; pending?.('') },
+        'timeout-callback': () => { solved = false; cachedToken = ''; cachedAt = 0; pending?.('') },
       })
       markRendered?.()
     })
 
     return () => {
       cancelled = true
+      challenge = null
       pending = null
+      cachedToken = ''
+      cachedAt = 0
       if (widgetId) (window as { turnstile?: TurnstileApi }).turnstile?.remove(widgetId)
     }
   }, [siteKey])
