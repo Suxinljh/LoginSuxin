@@ -210,9 +210,9 @@ pnpm preview:email
 
 ## 已知限制
 
-- 尚未接入 Turnstile、登录限流、Passkey / 2FA。
+- Turnstile 人机验证与登录限流已接入：限流默认开启（按 IP 的 D1 固定窗口）；Turnstile 已在生产与 staging 启用（两个 key 同时配置才生效，删掉 secret 即回退到关闭），见 `docs/turnstile.md`。尚未接入 Passkey / 2FA。
 - Cloudflare Email Sending 仍是 open beta，日发送额度随账号信誉调整；高频发送前先看仪表盘额度。
-- 目前只有 `account.ljhsu.xin` 一个环境（`login` 仅 308 兼容），没有独立 staging 域名。
+- 生产域名是 `account.ljhsu.xin`（`login.ljhsu.xin` 仅 308 兼容）；另有独立 staging `staging.ljhsu.xin`（独立 Worker/D1/密钥，见 `docs/staging.md`）。
 - 各应用自行保存会话，登出应用不会自动踢掉 IdP 登录态（可用 OIDC `end_session_endpoint` 实现）。
 - 退款：超过 12 个月的支付宝订单无法自动原路退回，审核后标记为人工，由客服邮箱跟进；当前付费订单通过 EchoMind 的支付宝商户退款接口退回，账号中心后续可换成自己的支付适配器。
 - 当前不存在赠送积分；如果以后加入赠送，需要重新定义可退积分与消耗顺序。

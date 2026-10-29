@@ -11,6 +11,9 @@
     // 确认邮件可正常投递后再改成 "true"，否则未验证用户会卡在登录前。
     "REQUIRE_EMAIL_VERIFICATION": "true",
     "EMAIL_FROM": "Suxin Account <login@mail.ljhsu.xin>",
+    // Turnstile 公开 site key（widget: suxin-account, Managed）。secret 用 wrangler secret 管理；
+    // 两个 key 同时存在才启用，只写 site key 不会要求 token。
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAFpgENXLi7yiW6ti",
     // 账号中心通过 EchoMind 的支付宝商户退款接口发起原路退款。
     "ECHOMIND_REFUND_URL": "https://echomind.ljhsu.xin/api/pay/admin/refund"
   },

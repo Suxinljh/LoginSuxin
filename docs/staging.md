@@ -49,12 +49,13 @@ pnpm tail:staging
    `https://staging.ljhsu.xin`，并在 staging 账号中心用 `scripts/create-client.mjs` 建一个 OAuth client。
    这样端到端的登录/计价都能在 staging 跑通。
 
-## 当前状态（2026-10-28）
+## 当前状态（2026-10-29）
 
-- 已配置：`BETTER_AUTH_SECRET`、`APP_API_KEYS`、`CREDITS_ADMIN_TOKEN`、`GITHUB_CLIENT_ID/SECRET`、`GOOGLE_CLIENT_ID/SECRET`（值只在 Cloudflare 与 `.local-secrets.json`，不进 Git）。
+- 已配置：`BETTER_AUTH_SECRET`、`APP_API_KEYS`、`CREDITS_ADMIN_TOKEN`、`GITHUB_CLIENT_ID/SECRET`、`GOOGLE_CLIENT_ID/SECRET`、`TURNSTILE_SITE_KEY/SECRET`（值只在 Cloudflare 与 `.local-secrets.json`，不进 Git）。
 - 第三方登录复用生产 App：GitHub OAuth App 已登记 `https://account.ljhsu.xin/...` 与 `https://staging.ljhsu.xin/...` 两个回调（新版 GitHub 支持 Add redirect URL）；Google OAuth client 同样登记了两个 redirect URI。
 - 已验证：`/api/providers` 返回 `{"github":true,"google":true}`；对 staging 与生产分别发起 `POST /api/auth/sign-in/social`，返回的 `redirect_uri` 分别是 `https://staging.ljhsu.xin/api/auth/callback/{github,google}` 与 `https://account.ljhsu.xin/api/auth/callback/{github,google}`，两边互不影响。
-- 未配置：Turnstile（等新建 widget 后填 site key，再用 `wrangler secret put TURNSTILE_SECRET_KEY -c wrangler.staging.jsonc` 写 secret）；原路退款通道（刻意留空）。
+- Turnstile：已切到真实 widget `suxin-account`（Managed，域名白名单含两个域名），`node scripts/check-turnstile.mjs https://staging.ljhsu.xin` 通过（无 token 400、伪造 token 400）。真实浏览器的 widget 渲染与一次完整登录仍需人工确认。
+- 未配置：原路退款通道（刻意留空）。
 
 ## 验收顺序（每次改账号中心后）
 

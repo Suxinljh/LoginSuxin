@@ -77,8 +77,7 @@ providers: {"github":true,"google":true,"turnstile":"0x4AAAAAAA..."}
 注意 secret 是 **35 个字符**（`1x` + 30 个 0 + `AA`）。写成 32 位的相近串会被
 `siteverify` 判为 `invalid-input-secret`，表现就是「配了 secret 但所有 token 都校验失败」。
 
-**staging 目前就跑在「永远通过」测试 key 上**（看 UI 用）：`site key` 与 `secret` 都是
-以 `wrangler secret put` 写入的，不写进配置文件。换真实 widget 时用：
+**staging 现在已切到真实 widget**（`suxin-account`，site key `0x4AAAAAAFpgENXLi7yiW6ti`，Managed 模式，域名白名单含 `account.ljhsu.xin` 与 `staging.ljhsu.xin`）：`site key` 与 `secret` 都以 `wrangler secret put` 写入 staging Worker，不写进配置文件。换 key（或换成测试 key）时用：
 
 ```bash
 printf '%s' '<真实 site key>' | pnpm exec wrangler secret put TURNSTILE_SITE_KEY -c wrangler.staging.jsonc
@@ -86,7 +85,14 @@ pnpm exec wrangler secret put TURNSTILE_SECRET_KEY -c wrangler.staging.jsonc
 node scripts/check-turnstile.mjs https://staging.ljhsu.xin   # 期望：伪造 token 被拒
 ```
 
+注意：真实 widget 下 `siteverify` 会拿 token 校验，用 `always-pass` 测试 secret 时伪造 token 会被放行
+（走到 Better Auth 返回 401），所以校验脚本会提示“用的是测试 secret”；只有换成真实 secret 才会看到
+`400 人机验证未通过`。
+
 ## 第三步：确认没问题后再开生产
+
+> 2026-10-29：生产已按此步骤启用（site key 在 `wrangler.jsonc`，secret 在 Worker），
+> `node scripts/check-turnstile.mjs https://account.ljhsu.xin` 通过。回滚删 secret 即可。
 
 ```bash
 # 1) wrangler.jsonc 的 vars 加 TURNSTILE_SITE_KEY
