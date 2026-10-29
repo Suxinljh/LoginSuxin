@@ -127,12 +127,14 @@ export function Divider() {
   )
 }
 
-export function SocialButtons({ onError, challenge, onChallenged }: {
+export function SocialButtons({ onError, challenge, onChallenged, guard }: {
   onError: (message: string) => void
   /** 启用 Turnstile 时由页面传入：点社交登录先跑一次人机验证拿 token。 */
   challenge?: () => Promise<string>
   /** token 已用掉或校验失败时通知页面重置 widget。 */
   onChallenged?: () => void
+  /** 页面级前置检查（如是否勾选同意条款）；返回 false 时中止并自行提示。 */
+  guard?: () => boolean
 }) {
   const [loading, setLoading] = useState<'github' | 'google' | null>(null)
   const [providers, setProviders] = useState<{ github: boolean; google: boolean } | null>(null)
@@ -149,6 +151,7 @@ export function SocialButtons({ onError, challenge, onChallenged }: {
   }, [])
 
   async function signIn(provider: 'github' | 'google') {
+    if (guard && !guard()) return
     setLoading(provider)
     onError('')
     try {
@@ -341,8 +344,29 @@ export function StatusChip({ verified }: { verified: boolean }) {
   return <Chip color={verified ? 'success' : 'warning'}>{verified ? '邮箱已验证' : '邮箱未验证'}</Chip>
 }
 
-export function TextLink({ href, children }: { href: string; children: ReactNode }) {
-  return <Link href={href}>{children}</Link>
+export function TextLink({ href, children, external }: { href: string; children: ReactNode; external?: boolean }) {
+  return <Link href={href} {...(external ? { target: '_blank', rel: 'noreferrer' } : {})}>{children}</Link>
+}
+
+/** 登录/注册前必须勾选的同意项，文案与退款页保持一致。 */
+export const CONSENT_REQUIRED = '请先阅读并同意《服务协议与政策》。'
+
+export function ConsentCheckbox({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) {
+  return (
+    <label className="flex items-start gap-2 text-xs leading-relaxed text-muted">
+      <input
+        type="checkbox"
+        className="mt-0.5"
+        checked={checked}
+        onChange={event => onChange(event.target.checked)}
+      />
+      <span>
+        我已阅读并同意
+        <TextLink href="/terms/refund" external>《服务协议与政策》</TextLink>
+        （含《用户协议》与《隐私政策》）
+      </span>
+    </label>
+  )
 }
 
 function GithubIcon() {

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { Button, Chip, Spinner } from '@heroui/react'
 import { authClient } from './auth-client'
-import { AuthShell, FormField, Notice, SocialButtons, StatusChip, SubmitButton, TURNSTILE_FAILED, TextLink, TurnstileWidget, errorText, useTurnstileSiteKey, type TurnstileExecutor } from './components'
+import { AuthShell, CONSENT_REQUIRED, ConsentCheckbox, FormField, Notice, SocialButtons, StatusChip, SubmitButton, TURNSTILE_FAILED, TextLink, TurnstileWidget, errorText, useTurnstileSiteKey, type TurnstileExecutor } from './components'
 
 function useOAuthFlow(): boolean {
   return useMemo(() => {
@@ -35,7 +35,14 @@ export function SignIn() {
   const siteKey = useTurnstileSiteKey()
   const turnstile = useRef<TurnstileExecutor>(async () => '')
   const [turnstileNonce, setTurnstileNonce] = useState(0)
+  const [agreed, setAgreed] = useState(false)
   const resetTurnstile = () => setTurnstileNonce(value => value + 1)
+  /** 未勾选同意条款时不发请求，只提示。 */
+  const consentOk = () => {
+    if (agreed) return true
+    setError(CONSENT_REQUIRED)
+    return false
+  }
 
   /** 提交前跑一次人机验证；未启用 Turnstile 时直接返回空串。 */
   async function requestTurnstileToken(): Promise<string> {
@@ -48,6 +55,7 @@ export function SignIn() {
   async function submit(event: FormEvent) {
     event.preventDefault()
     setError('')
+    if (!consentOk()) return
     setLoading(true)
     const turnstileToken = await requestTurnstileToken()
     // 只有启用了 Turnstile 才要求 token；未启用时是空串，不能因此拦住登录。
@@ -81,11 +89,13 @@ export function SignIn() {
         <div className="-mt-1 flex justify-end text-sm">
           <TextLink href="/forgot-password">忘记密码？</TextLink>
         </div>
+        <ConsentCheckbox checked={agreed} onChange={setAgreed} />
         <TurnstileWidget key={`signin-${turnstileNonce}`} siteKey={siteKey} onReady={execute => { turnstile.current = execute }} />
         <SubmitButton loading={loading}>登录</SubmitButton>
       </form>
       <SocialButtons
         onError={setError}
+        guard={consentOk}
         challenge={siteKey ? requestTurnstileToken : undefined}
         onChallenged={resetTurnstile}
       />
@@ -109,7 +119,13 @@ export function SignUp() {
   const siteKey = useTurnstileSiteKey()
   const turnstile = useRef<TurnstileExecutor>(async () => '')
   const [turnstileNonce, setTurnstileNonce] = useState(0)
+  const [agreed, setAgreed] = useState(false)
   const resetTurnstile = () => setTurnstileNonce(value => value + 1)
+  const consentOk = () => {
+    if (agreed) return true
+    setError(CONSENT_REQUIRED)
+    return false
+  }
 
   async function requestTurnstileToken(): Promise<string> {
     if (!siteKey) return ''
@@ -125,6 +141,7 @@ export function SignUp() {
       setError('两次输入的密码不一致。')
       return
     }
+    if (!consentOk()) return
     setLoading(true)
     const turnstileToken = await requestTurnstileToken()
     if (siteKey && !turnstileToken) {
@@ -168,11 +185,13 @@ export function SignUp() {
         <FormField label="邮箱" type="email" autoComplete="email" value={email} onChange={setEmail} placeholder="you@example.com" />
         <FormField label="密码" type="password" autoComplete="new-password" minLength={8} value={password} onChange={setPassword} placeholder="至少 8 位" />
         <FormField label="确认密码" type="password" autoComplete="new-password" minLength={8} value={confirm} onChange={setConfirm} placeholder="再输入一次" />
+        <ConsentCheckbox checked={agreed} onChange={setAgreed} />
         <TurnstileWidget key={`signup-${turnstileNonce}`} siteKey={siteKey} onReady={execute => { turnstile.current = execute }} />
         <SubmitButton loading={loading}>创建账号</SubmitButton>
       </form>
       <SocialButtons
         onError={setError}
+        guard={consentOk}
         challenge={siteKey ? requestTurnstileToken : undefined}
         onChallenged={resetTurnstile}
       />
